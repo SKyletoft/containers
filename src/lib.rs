@@ -47,7 +47,8 @@ impl<T> List<T> {
 
 	pub fn push_back(&mut self, elem: T) {
 		if let Some(mut last) = self.end {
-			assert!(unsafe { last.as_ptr().read() }.next.is_none());
+			assert!(self.start.is_some());
+			assert!(unsafe { last.as_ref() }.next.is_none());
 			assert!(self.len > 0);
 			let ptr = ListNode::new_alloc(ListNode {
 				next: None,
@@ -72,7 +73,8 @@ impl<T> List<T> {
 
 	pub fn push_front(&mut self, elem: T) {
 		if let Some(mut first) = self.start {
-			assert!(unsafe { first.as_ptr().read() }.prev.is_none());
+			assert!(self.end.is_some());
+			assert!(unsafe { first.as_ref() }.prev.is_none());
 			assert!(self.len > 0);
 			let ptr = ListNode::new_alloc(ListNode {
 				next: self.start,
@@ -83,6 +85,7 @@ impl<T> List<T> {
 			unsafe { first.as_mut() }.prev = ptr;
 			self.len += 1;
 		} else {
+			assert!(self.end.is_none());
 			self.push_back(elem);
 		}
 	}
