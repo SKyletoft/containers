@@ -1,3 +1,4 @@
+use std::{alloc, alloc::Layout, error::Error, fmt, ptr, ptr::NonNull};
 #[cfg(test)]
 pub mod test_i32;
 #[cfg(test)]
@@ -7,8 +8,6 @@ pub mod list_node;
 use list_node::ListNode;
 
 pub mod error;
-
-use std::{alloc, alloc::Layout, error::Error, fmt, ptr, ptr::NonNull};
 
 #[derive(Clone, PartialEq)]
 pub struct List<T> {
@@ -49,6 +48,7 @@ impl<T> List<T> {
 	pub fn push_back(&mut self, elem: T) {
 		if let Some(mut last) = self.end {
 			assert!(unsafe { last.as_ptr().read() }.next.is_none());
+			assert!(self.len > 0);
 			let ptr = ListNode::new_alloc(ListNode {
 				next: None,
 				prev: self.end,
@@ -58,6 +58,7 @@ impl<T> List<T> {
 			unsafe { last.as_mut() }.next = ptr;
 		} else {
 			assert!(self.start.is_none());
+			assert_eq!(self.len, 0);
 			let ptr = ListNode::new_alloc(ListNode {
 				next: None,
 				prev: None,
@@ -72,6 +73,7 @@ impl<T> List<T> {
 	pub fn push_front(&mut self, elem: T) {
 		if let Some(mut first) = self.start {
 			assert!(unsafe { first.as_ptr().read() }.prev.is_none());
+			assert!(self.len > 0);
 			let ptr = ListNode::new_alloc(ListNode {
 				next: self.start,
 				prev: None,
@@ -145,24 +147,23 @@ impl<T> List<T> {
 		}
 		let curr = self.get_internal_mut(index).expect("Error in an insertion function, index is less than claimed length yet no element exists at index");
 
-		if let Some(mut ptr_to_this) = curr.prev {
-			let ptr = ListNode::new_alloc(ListNode {
-				next: Some(
-					NonNull::new(curr as *mut ListNode<T>).expect("Pointer already checked?"),
-				),
-				prev: curr.prev,
-				val: elem,
-			});
+		let mut ptr_from_last = curr.prev.expect("Pointer to previous missing!?");
+		let ptr = ListNode::new_alloc(ListNode {
+			next: Some(NonNull::new(curr as *mut ListNode<T>).expect("Pointer already checked?")),
+			prev: curr.prev,
+			val: elem,
+		});
 
-			unsafe { ptr_to_this.as_mut() }.next = ptr;
-		} else {
-			panic!("Pointer to previous missing!?");
-		}
+		unsafe { ptr_from_last.as_mut() }.next = ptr;
 	}
 
 	pub fn remove(&mut self, index: usize) -> T {
-		if index == 0 {}
-		if index == self.len - 1 {}
+		if index == 0 {
+			todo!()
+		}
+		if index == self.len - 1 {
+			todo!()
+		}
 		let element = self.get_internal_mut(index).expect("Out of bounds?");
 		let mut prev = element.prev.expect("Previous node missing!");
 		let mut next = element.next.expect("Next node missing!");
