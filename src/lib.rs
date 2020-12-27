@@ -1,10 +1,20 @@
+#[cfg(test)]
+pub mod test_i32;
+#[cfg(test)]
+pub mod test_vec;
+
+pub mod list_node;
+use list_node::ListNode;
+
+pub mod error;
+
 use std::{alloc, alloc::Layout, error::Error, fmt, ptr, ptr::NonNull};
 
 #[derive(Clone, PartialEq)]
 pub struct List<T> {
-	start: Option<NonNull<ListNode<T>>>,
-	end: Option<NonNull<ListNode<T>>>,
-	len: usize,
+	pub(crate) start: Option<NonNull<ListNode<T>>>,
+	pub(crate) end: Option<NonNull<ListNode<T>>>,
+	pub(crate) len: usize,
 }
 
 impl<T: fmt::Debug> fmt::Debug for List<T> {
@@ -21,23 +31,9 @@ impl<T: fmt::Debug> fmt::Debug for List<T> {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
-struct ListNode<T> {
-	val: T,
-	next: Option<NonNull<ListNode<T>>>,
-	prev: Option<NonNull<ListNode<T>>>,
-}
-
-impl<T> ListNode<T> {
-	fn new_alloc(elem: ListNode<T>) -> Option<NonNull<ListNode<T>>> {
-		let layout = Layout::for_value(&elem);
-		let ptr = unsafe {
-			let ptr = alloc::alloc(layout) as *mut ListNode<T>;
-			assert!(!ptr.is_null(), "Allocation failed");
-			ptr.write(elem);
-			ptr
-		};
-		NonNull::new(ptr)
+impl<T> Default for List<T> {
+	fn default() -> Self {
+		Self::new()
 	}
 }
 
@@ -183,239 +179,5 @@ impl<T> List<T> {
 		let layout = Layout::for_value(element);
 		unsafe { alloc::dealloc(ptr as *mut u8, layout) };
 		ret
-	}
-}
-
-impl<T> Default for List<T> {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ListError {}
-
-impl fmt::Display for ListError {
-	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		write!(f, "An error occured, probably out of bounds")
-	}
-}
-
-impl Error for ListError {}
-
-#[cfg(test)]
-mod tests_i32 {
-	use crate::*;
-
-	#[test]
-	fn add_one_back() {
-		let mut list = List::new();
-		assert_eq!(list.len, 0);
-		list.push_back(5);
-		assert_eq!(list.len, 1);
-		assert_eq!(list.start, list.end);
-		assert!(list.start.is_some());
-		assert!(ptr::eq(
-			list.start.unwrap().as_ptr(),
-			list.end.unwrap().as_ptr()
-		));
-	}
-
-	#[test]
-	fn add_one_front() {
-		let mut list = List::new();
-		assert_eq!(list.len, 0);
-		list.push_front(5);
-		assert_eq!(list.len, 1);
-		assert_eq!(list.start, list.end);
-		assert!(list.start.is_some());
-		assert!(ptr::eq(
-			list.start.unwrap().as_ptr(),
-			list.end.unwrap().as_ptr()
-		));
-	}
-
-	#[test]
-	fn add_three_back() {
-		let mut list = List::new();
-		list.push_back(1);
-		list.push_back(2);
-		list.push_back(3);
-		assert_eq!(list.len, 3);
-		assert_ne!(list.start, list.end);
-		assert!(list.start.is_some());
-		assert!(list.end.is_some());
-		assert_eq!(list.get(0), Some(&1));
-		assert_eq!(list.get(1), Some(&2));
-		assert_eq!(list.get(2), Some(&3));
-		assert_eq!(list.get(3), None);
-	}
-
-	#[test]
-	fn add_three_front() {
-		let mut list = List::new();
-		list.push_front(1);
-		list.push_front(2);
-		list.push_front(3);
-		assert_eq!(list.len, 3);
-		assert_ne!(list.start, list.end);
-		assert!(list.start.is_some());
-		assert!(list.end.is_some());
-		assert_eq!(list.get(0), Some(&3));
-		assert_eq!(list.get(1), Some(&2));
-		assert_eq!(list.get(2), Some(&1));
-		assert_eq!(list.get(3), None);
-	}
-
-	#[test]
-	fn insert() {
-		let mut list = List::new();
-		list.push_back(1);
-		list.push_back(2);
-		list.push_back(3);
-		list.push_back(4);
-		list.push_back(5);
-		list.insert(2, 10);
-		assert_eq!(list.get(0), Some(&1));
-		assert_eq!(list.get(1), Some(&2));
-		assert_eq!(list.get(2), Some(&10));
-		assert_eq!(list.get(3), Some(&3));
-		assert_eq!(list.get(4), Some(&4));
-		assert_eq!(list.get(5), Some(&5));
-		assert_eq!(list.get(6), None);
-	}
-
-	#[test]
-	fn remove() {
-		let mut list = List::new();
-		list.push_back(1);
-		list.push_back(2);
-		list.push_back(3);
-		list.push_back(4);
-		list.push_back(5);
-		assert_eq!(list.get(0), Some(&1));
-		assert_eq!(list.get(1), Some(&2));
-		assert_eq!(list.get(2), Some(&3));
-		assert_eq!(list.get(3), Some(&4));
-		assert_eq!(list.get(4), Some(&5));
-		assert_eq!(list.get(5), None);
-		let removed = list.remove(2);
-		assert_eq!(list.get(0), Some(&1));
-		assert_eq!(list.get(1), Some(&2));
-		assert_eq!(list.get(2), Some(&4));
-		assert_eq!(list.get(3), Some(&5));
-		assert_eq!(list.get(4), None);
-		assert_eq!(removed, 3);
-	}
-}
-
-#[cfg(test)]
-mod tests_vec_i32 {
-	use crate::*;
-
-	#[test]
-	fn add_one_back() {
-		let mut list = List::new();
-		assert_eq!(list.len, 0);
-		list.push_back(vec![5]);
-		assert_eq!(list.len, 1);
-		assert_eq!(list.start, list.end);
-		assert!(list.start.is_some());
-		assert!(ptr::eq(
-			list.start.unwrap().as_ptr(),
-			list.end.unwrap().as_ptr()
-		));
-		assert_eq!(list.get(0), Some(&vec![5]));
-	}
-
-	#[test]
-	fn add_one_front() {
-		let mut list = List::new();
-		assert_eq!(list.len, 0);
-		list.push_front(vec![5]);
-		assert_eq!(list.len, 1);
-		assert_eq!(list.start, list.end);
-		assert!(list.start.is_some());
-		assert!(ptr::eq(
-			list.start.unwrap().as_ptr(),
-			list.end.unwrap().as_ptr()
-		));
-		assert_eq!(list.get(0), Some(&vec![5]));
-	}
-
-	#[test]
-	fn add_three_back() {
-		let mut list = List::new();
-		list.push_back(vec![1]);
-		dbg!(&list);
-		list.push_back(vec![7]);
-		dbg!(&list);
-		list.push_back(vec![5]);
-		dbg!(&list);
-		assert_eq!(list.len, 3);
-		assert_ne!(list.start, list.end);
-		assert!(list.start.is_some());
-		assert!(list.end.is_some());
-		assert_eq!(list.get(0), Some(&vec![1]));
-		assert_eq!(list.get(1), Some(&vec![7]));
-		assert_eq!(list.get(2), Some(&vec![5]));
-		assert_eq!(list.get(3), None);
-	}
-
-	#[test]
-	fn add_three_front() {
-		let mut list = List::new();
-		list.push_front(vec![1]);
-		list.push_front(vec![2]);
-		list.push_front(vec![3]);
-		assert_eq!(list.len, 3);
-		assert_ne!(list.start, list.end);
-		assert!(list.start.is_some());
-		assert!(list.end.is_some());
-		assert_eq!(list.get(0), Some(&vec![3]));
-		assert_eq!(list.get(1), Some(&vec![2]));
-		assert_eq!(list.get(2), Some(&vec![1]));
-		assert_eq!(list.get(3), None);
-	}
-
-	#[test]
-	fn insert() {
-		let mut list = List::new();
-		list.push_back(vec![1]);
-		list.push_back(vec![2]);
-		list.push_back(vec![3]);
-		list.push_back(vec![4]);
-		list.push_back(vec![5]);
-		list.insert(2, vec![10]);
-		assert_eq!(list.get(0), Some(&vec![1]));
-		assert_eq!(list.get(1), Some(&vec![2]));
-		assert_eq!(list.get(2), Some(&vec![10]));
-		assert_eq!(list.get(3), Some(&vec![3]));
-		assert_eq!(list.get(4), Some(&vec![4]));
-		assert_eq!(list.get(5), Some(&vec![5]));
-		assert_eq!(list.get(6), None);
-	}
-
-	#[test]
-	fn remove() {
-		let mut list = List::new();
-		list.push_back(vec![1]);
-		list.push_back(vec![2]);
-		list.push_back(vec![3]);
-		list.push_back(vec![4]);
-		list.push_back(vec![5]);
-		assert_eq!(list.get(0), Some(&vec![1]));
-		assert_eq!(list.get(1), Some(&vec![2]));
-		assert_eq!(list.get(2), Some(&vec![3]));
-		assert_eq!(list.get(3), Some(&vec![4]));
-		assert_eq!(list.get(4), Some(&vec![5]));
-		assert_eq!(list.get(5), None);
-		let removed = list.remove(2);
-		assert_eq!(list.get(0), Some(&vec![1]));
-		assert_eq!(list.get(1), Some(&vec![2]));
-		assert_eq!(list.get(2), Some(&vec![4]));
-		assert_eq!(list.get(3), Some(&vec![5]));
-		assert_eq!(list.get(4), None);
-		assert_eq!(removed, vec![3]);
 	}
 }
