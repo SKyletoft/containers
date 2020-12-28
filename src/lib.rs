@@ -30,15 +30,18 @@ pub struct List<T> {
 
 impl<T: fmt::Debug> fmt::Debug for List<T> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		writeln!(
-			f,
-			"\nstart: {:?}\nend: {:?}\nlen: {}",
-			self.start, self.end, self.len
-		)?;
-		for elem in self.iter() {
-			writeln!(f, "{:?}", elem)?;
+		if self.is_empty() {
+			return write!(f, "[]");
 		}
-		Ok(())
+		write!(f, "[")?;
+		for elem in self.iter().take(self.len()) {
+			write!(f, "{:?}, ", elem)?;
+		}
+		write!(
+			f,
+			"{:?}]",
+			self.get_back(0).expect("length already checked?")
+		)
 	}
 }
 
@@ -161,6 +164,18 @@ impl<'a, T> List<T> {
 		}
 	}
 
+	pub fn len(&self) -> usize {
+		self.len
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len == 0
+	}
+
+	pub fn iter(&'a self) -> BorrowedListIterator<'a, T> {
+		self.into_iter()
+	}
+
 	pub fn push_back(&mut self, elem: T) {
 		if let Some(mut last) = self.end {
 			assert!(self.start.is_some());
@@ -204,6 +219,63 @@ impl<'a, T> List<T> {
 			assert!(self.end.is_none());
 			self.push_back(elem);
 		}
+	}
+
+	pub fn insert(&mut self, index: usize, elem: T) {
+		if index <= self.len() / 2 {
+			self.insert_front(index, elem)
+		} else {
+			self.insert_back(self.len() - index - 1, elem)
+		}
+	}
+
+	pub fn insert_front(&mut self, index: usize, elem: T) {
+		if self.len() < index {
+			panic!("Index beyond last element of list!");
+		}
+		if self.len() == index {
+			return self.push_back(elem);
+		}
+		if index == 0 {
+			return self.push_front(elem);
+		}
+		let curr = self.get_internal_mut(index).expect("Error in an insertion function, index is less than claimed length yet no element exists at index");
+
+		let mut last_ptr = curr.prev.expect("Pointer to previous missing!?");
+		let ptr = ListNode::new_alloc(ListNode {
+			next: Some(NonNull::new(curr as *mut ListNode<T>).expect("Pointer already checked?")),
+			prev: curr.prev,
+			val: elem,
+		});
+
+		unsafe { last_ptr.as_mut() }.next = ptr;
+		curr.prev = ptr;
+		self.len += 1;
+	}
+
+	pub fn insert_back(&mut self, index: usize, elem: T) {
+		dbg!(index);
+		if self.len() < index {
+			panic!("Index beyond first element of list!");
+		}
+		if self.len() == index {
+			return self.push_front(elem);
+		}
+		if index == 0 {
+			return self.push_back(elem);
+		}
+		let curr = self.get_internal_back_mut(index).expect("Error in an insertion function, index is less than claimed length yet no element exists at index");
+
+		let mut ptr_from_last = curr.prev.expect("Pointer to previous missing!?");
+		let ptr = ListNode::new_alloc(ListNode {
+			next: Some(NonNull::new(curr as *mut ListNode<T>).expect("Pointer already checked?")),
+			prev: curr.prev,
+			val: elem,
+		});
+
+		unsafe { ptr_from_last.as_mut() }.next = ptr;
+		curr.prev = ptr;
+		self.len += 1;
 	}
 
 	fn get_internal(&self, index: usize) -> Option<&ListNode<T>> {
@@ -254,57 +326,8 @@ impl<'a, T> List<T> {
 		self.get_internal_back_mut(index).map(|v| &mut v.val)
 	}
 
-	pub fn insert(&mut self, index: usize, elem: T) {
-		if self.len < index {
-			panic!("Index beyond last element of list!");
-		}
-		if self.len == index {
-			return self.push_back(elem);
-		}
-		if index == 0 {
-			return self.push_front(elem);
-		}
-		let curr = self.get_internal_mut(index).expect("Error in an insertion function, index is less than claimed length yet no element exists at index");
-
-		let mut ptr_from_last = curr.prev.expect("Pointer to previous missing!?");
-		let ptr = ListNode::new_alloc(ListNode {
-			next: Some(NonNull::new(curr as *mut ListNode<T>).expect("Pointer already checked?")),
-			prev: curr.prev,
-			val: elem,
-		});
-		self.len += 1;
-
-		unsafe { ptr_from_last.as_mut() }.next = ptr;
-	}
-
-	pub fn remove(&mut self, index: usize) -> T {
-		if index == 0 {
-			return self.pop_front();
-		}
-		if index == self.len - 1 {
-			return self.pop_back();
-		}
-		self.len -= 1;
-		let element = self.get_internal_mut(index).expect("Out of bounds?");
-		let mut prev = element.prev.expect("Previous node missing!");
-		let mut next = element.next.expect("Next node missing!");
-		let prev_r = unsafe { prev.as_mut() };
-		let next_r = unsafe { next.as_mut() };
-		prev_r.next = element.next;
-		next_r.prev = element.prev;
-
-		//I don't think this is sound. Is it copying .val to the stack without copying potentially owned data or what?
-		//It is what std::vec::Vec seems to do though, for what that's worth
-		let ret = unsafe { ptr::read(&element.val as *const T) };
-
-		let ptr = element as *mut ListNode<T>;
-		let layout = Layout::for_value(element);
-		unsafe { alloc::dealloc(ptr as *mut u8, layout) };
-		ret
-	}
-
 	pub fn pop_front(&mut self) -> T {
-		assert!(self.len > 0);
+		assert!(!self.is_empty());
 		self.len -= 1;
 		let mut first = self
 			.start
@@ -327,7 +350,7 @@ impl<'a, T> List<T> {
 	}
 
 	pub fn pop_back(&mut self) -> T {
-		assert!(self.len > 0);
+		assert!(!self.is_empty());
 		self.len -= 1;
 		let mut last = self
 			.end
@@ -349,8 +372,58 @@ impl<'a, T> List<T> {
 		ret
 	}
 
-	pub fn iter(&'a self) -> BorrowedListIterator<'a, T> {
-		self.into_iter()
+	pub fn remove(&mut self, index: usize) -> T {
+		if index <= self.len() / 2 {
+			self.remove_front(index)
+		} else {
+			self.remove_back(self.len() - index - 1)
+		}
+	}
+
+	pub fn remove_front(&mut self, index: usize) -> T {
+		if index == 0 {
+			return self.pop_front();
+		}
+		if index == self.len - 1 {
+			return self.pop_back();
+		}
+		self.len -= 1;
+		let element = self.get_internal_mut(index).expect("Out of bounds?");
+		let mut prev = element.prev.expect("Previous node missing!");
+		let mut next = element.next.expect("Next node missing!");
+		let prev_r = unsafe { prev.as_mut() };
+		let next_r = unsafe { next.as_mut() };
+		prev_r.next = element.next;
+		next_r.prev = element.prev;
+
+		let ret = unsafe { ptr::read(&element.val as *const T) };
+		let ptr = element as *mut ListNode<T>;
+		let layout = Layout::for_value(element);
+		unsafe { alloc::dealloc(ptr as *mut u8, layout) };
+		ret
+	}
+
+	pub fn remove_back(&mut self, index: usize) -> T {
+		if index == 0 {
+			return self.pop_back();
+		}
+		if index == self.len - 1 {
+			return self.pop_front();
+		}
+		self.len -= 1;
+		let element = self.get_internal_back_mut(index).expect("Out of bounds?");
+		let mut prev = element.prev.expect("Previous node missing!");
+		let mut next = element.next.expect("Next node missing!");
+		let prev_r = unsafe { prev.as_mut() };
+		let next_r = unsafe { next.as_mut() };
+		prev_r.next = element.next;
+		next_r.prev = element.prev;
+
+		let ret = unsafe { ptr::read(&element.val as *const T) };
+		let ptr = element as *mut ListNode<T>;
+		let layout = Layout::for_value(element);
+		unsafe { alloc::dealloc(ptr as *mut u8, layout) };
+		ret
 	}
 
 	pub fn split_off(&mut self, index: usize) -> Self {
@@ -365,7 +438,12 @@ impl<'a, T> List<T> {
 
 		let mut list = List::new();
 
-		let last = self.get_internal_mut(index).expect("len is misset");
+		let last = if index <= self.len() / 2 {
+			self.get_internal_mut(index).expect("len is misset")
+		} else {
+			self.get_internal_back_mut(self.len() - index - 1)
+				.expect("len is misset")
+		};
 		let prev = last.prev;
 
 		last.prev = None;
@@ -379,14 +457,6 @@ impl<'a, T> List<T> {
 			r.next = None;
 		}
 		list
-	}
-
-	pub fn len(&self) -> usize {
-		self.len
-	}
-
-	pub fn is_empty(&self) -> bool {
-		self.len == 0
 	}
 
 	pub fn append(&mut self, other: &mut Self) {
