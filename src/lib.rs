@@ -1,4 +1,13 @@
-use std::{alloc, alloc::Layout, error::Error, fmt, ptr, ptr::NonNull};
+use std::{
+	alloc,
+	alloc::Layout,
+	error::Error,
+	fmt,
+	iter::FromIterator,
+	ops::{Index, IndexMut},
+	ptr,
+	ptr::NonNull,
+};
 #[cfg(test)]
 pub mod test_i32;
 #[cfg(test)]
@@ -6,6 +15,9 @@ pub mod test_vec;
 
 pub mod list_node;
 use list_node::ListNode;
+
+pub mod iterator;
+use iterator::{BorrowedListIterator, ListIterator};
 
 pub mod error;
 
@@ -36,7 +48,96 @@ impl<T> Default for List<T> {
 	}
 }
 
-impl<T> List<T> {
+impl<T> Index<usize> for List<T> {
+	type Output = T;
+
+	fn index(&self, index: usize) -> &Self::Output {
+		if index <= self.len / 2 {
+			self.get(index).expect("Out of bounds")
+		} else {
+			self.get_back(self.len - index).expect("Out of bounds")
+		}
+	}
+}
+
+impl<T> IndexMut<usize> for List<T> {
+	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+		if index <= self.len / 2 {
+			self.get_mut(index).expect("Out of bounds")
+		} else {
+			self.get_back_mut(self.len - index).expect("Out of bounds")
+		}
+	}
+}
+
+impl<T> Index<isize> for List<T> {
+	type Output = T;
+
+	fn index(&self, index: isize) -> &Self::Output {
+		if index.is_positive() {
+			self.get(index as usize).expect("Out of bounds")
+		} else {
+			self.get_back(index.abs() as usize).expect("Out of bounds")
+		}
+	}
+}
+
+impl<T> IndexMut<isize> for List<T> {
+	fn index_mut(&mut self, index: isize) -> &mut Self::Output {
+		if index.is_positive() {
+			self.get_mut(index as usize).expect("Out of bounds")
+		} else {
+			self.get_back_mut(index.abs() as usize)
+				.expect("Out of bounds")
+		}
+	}
+}
+
+impl<T> IntoIterator for List<T> {
+	type Item = T;
+
+	type IntoIter = ListIterator<T>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		ListIterator { list: self }
+	}
+}
+
+impl<'a, T> IntoIterator for &'a List<T> {
+	type Item = &'a T;
+
+	type IntoIter = BorrowedListIterator<'a, T>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		BorrowedListIterator {
+			list: self,
+			node: None,
+		}
+	}
+}
+
+impl<T> FromIterator<T> for List<T> {
+	fn from_iter<U: IntoIterator<Item = T>>(iter: U) -> Self {
+		let mut list = List::new();
+		for item in iter {
+			list.push_back(item);
+		}
+		list
+	}
+}
+
+impl<T> Drop for List<T> {
+	fn drop(&mut self) {
+		while self.start.is_some() && self.end.is_some() && self.len > 0 {
+			self.pop_front();
+		}
+		assert!(self.start.is_none());
+		assert!(self.end.is_none());
+		assert_eq!(self.len, 0);
+	}
+}
+
+impl<'a, T> List<T> {
 	pub fn new() -> Self {
 		Self {
 			start: None,
@@ -156,17 +257,19 @@ impl<T> List<T> {
 			prev: curr.prev,
 			val: elem,
 		});
+		self.len += 1;
 
 		unsafe { ptr_from_last.as_mut() }.next = ptr;
 	}
 
 	pub fn remove(&mut self, index: usize) -> T {
 		if index == 0 {
-			todo!()
+			return self.pop_front();
 		}
 		if index == self.len - 1 {
-			todo!()
+			return self.pop_back();
 		}
+		self.len -= 1;
 		let element = self.get_internal_mut(index).expect("Out of bounds?");
 		let mut prev = element.prev.expect("Previous node missing!");
 		let mut next = element.next.expect("Next node missing!");
@@ -183,5 +286,51 @@ impl<T> List<T> {
 		let layout = Layout::for_value(element);
 		unsafe { alloc::dealloc(ptr as *mut u8, layout) };
 		ret
+	}
+
+	pub fn pop_front(&mut self) -> T {
+		assert!(self.len > 0);
+		self.len -= 1;
+		let mut first = self
+			.start
+			.expect("Bounds already checked? len is incorrectly set");
+		let element = unsafe { first.as_mut() };
+		self.start = element.next;
+		let ret = unsafe { ptr::read(&element.val as *const T) };
+		if let Some(mut ptr) = self.start {
+			let new_start = unsafe { ptr.as_mut() };
+			new_start.prev = None;
+		}
+		let ptr = element as *mut ListNode<T>;
+		let layout = Layout::for_value(element);
+		unsafe { alloc::dealloc(ptr as *mut u8, layout) };
+		if self.len == 0 {
+			assert!(self.start.is_none());
+			self.end = None;
+		}
+		ret
+	}
+
+	pub fn pop_back(&mut self) -> T {
+		assert!(self.len > 0);
+		self.len -= 1;
+		let mut last = self
+			.end
+			.expect("Bounds already checked? len is incorrectly set");
+		let element = unsafe { last.as_mut() };
+		self.end = element.prev;
+		let ret = unsafe { ptr::read(&element.val as *const T) };
+		if let Some(mut ptr) = self.end {
+			let new_end = unsafe { ptr.as_mut() };
+			new_end.next = None;
+		}
+		let ptr = element as *mut ListNode<T>;
+		let layout = Layout::for_value(element);
+		unsafe { alloc::dealloc(ptr as *mut u8, layout) };
+		ret
+	}
+
+	pub fn iter(&'a self) -> BorrowedListIterator<'a, T> {
+		self.into_iter()
 	}
 }
