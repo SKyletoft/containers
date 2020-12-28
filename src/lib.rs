@@ -319,7 +319,7 @@ impl<'a, T> List<T> {
 		let ptr = element as *mut ListNode<T>;
 		let layout = Layout::for_value(element);
 		unsafe { alloc::dealloc(ptr as *mut u8, layout) };
-		if self.len == 0 {
+		if self.is_empty() {
 			assert!(self.start.is_none());
 			self.end = None;
 		}
@@ -342,6 +342,10 @@ impl<'a, T> List<T> {
 		let ptr = element as *mut ListNode<T>;
 		let layout = Layout::for_value(element);
 		unsafe { alloc::dealloc(ptr as *mut u8, layout) };
+		if self.is_empty() {
+			assert!(self.end.is_none());
+			self.start = None;
+		}
 		ret
 	}
 
