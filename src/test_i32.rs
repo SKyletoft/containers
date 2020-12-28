@@ -206,3 +206,92 @@ fn from_iter() {
 	assert_eq!(list_iter.next(), Some(5));
 	assert_eq!(list_iter.next(), None);
 }
+
+#[test]
+fn split() {
+	let mut list_1: List<i32> = (0..10).collect();
+	let list_2 = list_1.split_off(5);
+	assert_eq!(list_1.len, 5);
+	assert_eq!(list_1.len, 5);
+	let mut list_iter_1 = list_1.into_iter();
+	let mut list_iter_2 = list_2.into_iter();
+
+	assert_eq!(list_iter_1.next(), Some(0));
+	assert_eq!(list_iter_1.next(), Some(1));
+	assert_eq!(list_iter_1.next(), Some(2));
+	assert_eq!(list_iter_1.next(), Some(3));
+	assert_eq!(list_iter_1.next(), Some(4));
+	assert_eq!(list_iter_1.next(), None);
+	assert_eq!(list_iter_2.next(), Some(5));
+	assert_eq!(list_iter_2.next(), Some(6));
+	assert_eq!(list_iter_2.next(), Some(7));
+	assert_eq!(list_iter_2.next(), Some(8));
+	assert_eq!(list_iter_2.next(), Some(9));
+	assert_eq!(list_iter_2.next(), None);
+}
+
+#[test]
+fn append() {
+	let mut list_1: List<i32> = (0..5).collect();
+	let mut list_2: List<i32> = (5..10).collect();
+	list_1.append(&mut list_2);
+	assert!(list_2.is_empty());
+	let mut list_iter = list_1.iter().copied();
+	assert_eq!(list_iter.next(), Some(0));
+	assert_eq!(list_iter.next(), Some(1));
+	assert_eq!(list_iter.next(), Some(2));
+	assert_eq!(list_iter.next(), Some(3));
+	assert_eq!(list_iter.next(), Some(4));
+	assert_eq!(list_iter.next(), Some(5));
+	assert_eq!(list_iter.next(), Some(6));
+	assert_eq!(list_iter.next(), Some(7));
+	assert_eq!(list_iter.next(), Some(8));
+	assert_eq!(list_iter.next(), Some(9));
+	assert_eq!(list_iter.next(), None);
+
+	let mut list_iter = list_1.iter().rev().copied();
+	assert_eq!(list_iter.next(), Some(9));
+	assert_eq!(list_iter.next(), Some(8));
+	assert_eq!(list_iter.next(), Some(7));
+	assert_eq!(list_iter.next(), Some(6));
+	assert_eq!(list_iter.next(), Some(5));
+	assert_eq!(list_iter.next(), Some(4));
+	assert_eq!(list_iter.next(), Some(3));
+	assert_eq!(list_iter.next(), Some(2));
+	assert_eq!(list_iter.next(), Some(1));
+	assert_eq!(list_iter.next(), Some(0));
+	assert_eq!(list_iter.next(), None);
+}
+
+#[test]
+fn prepend() {
+	let mut list_1: List<i32> = (5..10).collect();
+	let mut list_2: List<i32> = (0..5).collect();
+	list_1.prepend(&mut list_2);
+	assert!(list_2.is_empty());
+	let mut list_iter = list_1.iter().copied();
+	assert_eq!(list_iter.next(), Some(0));
+	assert_eq!(list_iter.next(), Some(1));
+	assert_eq!(list_iter.next(), Some(2));
+	assert_eq!(list_iter.next(), Some(3));
+	assert_eq!(list_iter.next(), Some(4));
+	assert_eq!(list_iter.next(), Some(5));
+	assert_eq!(list_iter.next(), Some(6));
+	assert_eq!(list_iter.next(), Some(7));
+	assert_eq!(list_iter.next(), Some(8));
+	assert_eq!(list_iter.next(), Some(9));
+	assert_eq!(list_iter.next(), None);
+
+	let mut list_iter = list_1.iter().rev().copied();
+	assert_eq!(list_iter.next(), Some(9));
+	assert_eq!(list_iter.next(), Some(8));
+	assert_eq!(list_iter.next(), Some(7));
+	assert_eq!(list_iter.next(), Some(6));
+	assert_eq!(list_iter.next(), Some(5));
+	assert_eq!(list_iter.next(), Some(4));
+	assert_eq!(list_iter.next(), Some(3));
+	assert_eq!(list_iter.next(), Some(2));
+	assert_eq!(list_iter.next(), Some(1));
+	assert_eq!(list_iter.next(), Some(0));
+	assert_eq!(list_iter.next(), None);
+}

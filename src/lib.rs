@@ -4,6 +4,7 @@ use std::{
 	error::Error,
 	fmt,
 	iter::FromIterator,
+	mem,
 	ops::{Index, IndexMut},
 	ptr,
 	ptr::NonNull,
@@ -21,7 +22,6 @@ use iterator::{BorrowedListIterator, ListIterator};
 
 pub mod error;
 
-#[derive(Clone, PartialEq)]
 pub struct List<T> {
 	pub(crate) start: Option<NonNull<ListNode<T>>>,
 	pub(crate) end: Option<NonNull<ListNode<T>>>,
@@ -35,8 +35,8 @@ impl<T: fmt::Debug> fmt::Debug for List<T> {
 			"\nstart: {:?}\nend: {:?}\nlen: {}",
 			self.start, self.end, self.len
 		)?;
-		for i in 0..=self.len {
-			writeln!(f, "{:?}", self.get(i))?;
+		for elem in self.iter() {
+			writeln!(f, "{:?}", elem)?;
 		}
 		Ok(())
 	}
@@ -134,6 +134,21 @@ impl<T> Drop for List<T> {
 		assert!(self.start.is_none());
 		assert!(self.end.is_none());
 		assert_eq!(self.len, 0);
+	}
+}
+
+impl<T: Clone> Clone for List<T> {
+	fn clone(&self) -> Self {
+		self.iter().cloned().collect()
+	}
+}
+
+impl<T: PartialEq> PartialEq for List<T> {
+	fn eq(&self, other: &Self) -> bool {
+		if self.len != other.len {
+			return false;
+		}
+		self.iter().zip(other.iter()).all(|(a, b)| a == b)
 	}
 }
 
@@ -332,5 +347,75 @@ impl<'a, T> List<T> {
 
 	pub fn iter(&'a self) -> BorrowedListIterator<'a, T> {
 		self.into_iter()
+	}
+
+	pub fn split_off(&mut self, index: usize) -> Self {
+		if index >= self.len {
+			panic!()
+		}
+		if index == 0 {
+			let mut list = List::new();
+			mem::swap(self, &mut list);
+			return list;
+		}
+
+		let mut list = List::new();
+
+		let last = self.get_internal_mut(index).expect("len is misset");
+		let prev = last.prev;
+
+		last.prev = None;
+		list.start = NonNull::new(last);
+		list.end = self.end;
+		list.len = self.len - index;
+
+		self.len = index;
+		self.end = prev;
+		if let Some(r) = self.get_internal_back_mut(0) {
+			r.next = None;
+		}
+		list
+	}
+
+	pub fn len(&self) -> usize {
+		self.len
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len == 0
+	}
+
+	pub fn append(&mut self, other: &mut Self) {
+		if self.is_empty() {
+			mem::swap(self, other);
+			return;
+		}
+		if other.is_empty() {
+			return;
+		}
+		self.get_internal_back_mut(0).unwrap().next = other.start;
+		other.get_internal_mut(0).unwrap().prev = self.end;
+		self.end = other.end;
+		self.len += other.len;
+		other.len = 0;
+		other.start = None;
+		other.end = None;
+	}
+
+	pub fn prepend(&mut self, other: &mut Self) {
+		if self.is_empty() {
+			mem::swap(self, other);
+			return;
+		}
+		if other.is_empty() {
+			return;
+		}
+		self.get_internal_mut(0).unwrap().prev = other.end;
+		other.get_internal_back_mut(0).unwrap().next = self.start;
+		self.start = other.start;
+		self.len += other.len;
+		other.len = 0;
+		other.start = None;
+		other.end = None;
 	}
 }
