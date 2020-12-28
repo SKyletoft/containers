@@ -254,7 +254,6 @@ impl<'a, T> List<T> {
 	}
 
 	pub fn insert_back(&mut self, index: usize, elem: T) {
-		dbg!(index);
 		if self.len() < index {
 			panic!("Index beyond first element of list!");
 		}
