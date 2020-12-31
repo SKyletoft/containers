@@ -134,9 +134,9 @@ impl<T> Drop for List<T> {
 		while self.start.is_some() && self.end.is_some() && self.len > 0 {
 			self.pop_front();
 		}
-		assert!(self.start.is_none());
-		assert!(self.end.is_none());
-		assert_eq!(self.len, 0);
+		debug_assert!(self.start.is_none());
+		debug_assert!(self.end.is_none());
+		debug_assert_eq!(self.len, 0);
 	}
 }
 
@@ -178,9 +178,9 @@ impl<'a, T> List<T> {
 
 	pub fn push_back(&mut self, elem: T) {
 		if let Some(mut last) = self.end {
-			assert!(self.start.is_some());
-			assert!(unsafe { last.as_ref() }.next.is_none());
-			assert!(self.len > 0);
+			debug_assert!(self.start.is_some());
+			debug_assert!(unsafe { last.as_ref() }.next.is_none());
+			debug_assert!(self.len > 0);
 			let ptr = ListNode::new_alloc(ListNode {
 				next: None,
 				prev: self.end,
@@ -189,8 +189,8 @@ impl<'a, T> List<T> {
 			self.end = ptr;
 			unsafe { last.as_mut() }.next = ptr;
 		} else {
-			assert!(self.start.is_none());
-			assert_eq!(self.len, 0);
+			debug_assert!(self.start.is_none());
+			debug_assert_eq!(self.len, 0);
 			let ptr = ListNode::new_alloc(ListNode {
 				next: None,
 				prev: None,
@@ -204,9 +204,9 @@ impl<'a, T> List<T> {
 
 	pub fn push_front(&mut self, elem: T) {
 		if let Some(mut first) = self.start {
-			assert!(self.end.is_some());
-			assert!(unsafe { first.as_ref() }.prev.is_none());
-			assert!(self.len > 0);
+			debug_assert!(self.end.is_some());
+			debug_assert!(unsafe { first.as_ref() }.prev.is_none());
+			debug_assert!(self.len > 0);
 			let ptr = ListNode::new_alloc(ListNode {
 				next: self.start,
 				prev: None,
@@ -216,7 +216,7 @@ impl<'a, T> List<T> {
 			unsafe { first.as_mut() }.prev = ptr;
 			self.len += 1;
 		} else {
-			assert!(self.end.is_none());
+			debug_assert!(self.end.is_none());
 			self.push_back(elem);
 		}
 	}
@@ -326,7 +326,7 @@ impl<'a, T> List<T> {
 	}
 
 	pub fn pop_front(&mut self) -> T {
-		assert!(!self.is_empty());
+		debug_assert!(!self.is_empty());
 		self.len -= 1;
 		let mut first = self
 			.start
@@ -342,14 +342,14 @@ impl<'a, T> List<T> {
 		let layout = Layout::for_value(element);
 		unsafe { alloc::dealloc(ptr as *mut u8, layout) };
 		if self.is_empty() {
-			assert!(self.start.is_none());
+			debug_assert!(self.start.is_none());
 			self.end = None;
 		}
 		ret
 	}
 
 	pub fn pop_back(&mut self) -> T {
-		assert!(!self.is_empty());
+		debug_assert!(!self.is_empty());
 		self.len -= 1;
 		let mut last = self
 			.end
@@ -365,7 +365,7 @@ impl<'a, T> List<T> {
 		let layout = Layout::for_value(element);
 		unsafe { alloc::dealloc(ptr as *mut u8, layout) };
 		if self.is_empty() {
-			assert!(self.end.is_none());
+			debug_assert!(self.end.is_none());
 			self.start = None;
 		}
 		ret
