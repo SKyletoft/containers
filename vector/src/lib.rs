@@ -50,6 +50,12 @@ impl<T> Vector<T> {
 		}
 	}
 
+	pub fn with_capacity(cap: usize) -> Self {
+		let mut vec = Vector::new();
+		vec.reserve(cap);
+		vec
+	}
+
 	pub fn is_empty(&self) -> bool {
 		self.size == 0
 	}
@@ -193,5 +199,15 @@ impl<T> Vector<T> {
 			assert!(self.is_empty());
 			&[]
 		}
+	}
+
+	/// # Safety
+	/// Panics if len is greater than the vector's capacity.
+	/// Exposes potentially uninitialised memory if len is greater than the vector's length.
+	pub unsafe fn set_len(&mut self, len: usize) {
+		if len > self.capacity {
+			panic!();
+		}
+		self.size = len;
 	}
 }

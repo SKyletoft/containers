@@ -187,6 +187,10 @@ impl<'a, T> List<T> {
 				val: elem,
 			});
 			self.end = ptr;
+			//Safety: The existing pointer is trusted as it shouldn't pass
+			// the assertions around its creation otherwise.
+			// The new pointer is trusted due to an assertion that the allocation
+			// succeded in the new_alloc function and the layouts being correct there
 			unsafe { last.as_mut() }.next = ptr;
 		} else {
 			debug_assert!(self.start.is_none());
@@ -213,6 +217,10 @@ impl<'a, T> List<T> {
 				val: elem,
 			});
 			self.start = ptr;
+			//Safety: The existing pointer is trusted as it shouldn't pass
+			// the assertions around its creation otherwise.
+			// The new pointer is trusted due to an assertion that the allocation
+			// succeded in the new_alloc function and the layouts being correct there
 			unsafe { first.as_mut() }.prev = ptr;
 			self.len += 1;
 		} else {
@@ -248,6 +256,10 @@ impl<'a, T> List<T> {
 			val: elem,
 		});
 
+		//Safety: The existing pointer is trusted as it shouldn't pass
+		// the assertions around its creation otherwise.
+		// The new pointer is trusted due to an assertion that the allocation
+		// succeded in the new_alloc function and the layouts being correct there
 		unsafe { last_ptr.as_mut() }.next = ptr;
 		curr.prev = ptr;
 		self.len += 1;
@@ -272,41 +284,57 @@ impl<'a, T> List<T> {
 			val: elem,
 		});
 
+		//Safety: The existing pointer is trusted as it shouldn't pass
+		// the assertions around its creation otherwise.
+		// The new pointer is trusted due to an assertion that the allocation
+		// succeded in the new_alloc function and the layouts being correct there
 		unsafe { ptr_from_last.as_mut() }.next = ptr;
 		curr.prev = ptr;
 		self.len += 1;
 	}
 
 	fn get_internal(&self, index: usize) -> Option<&ListNode<T>> {
-		let mut curr = self.start.as_ref()?;
+		//Safety: All pointers are ensured valid in the insertion and removal functions.
+		// This could've just been normal references if it hadn't've been doubly linked.
+		// Therefore list traversal is ok
+		let mut curr = unsafe { self.start.as_ref()?.as_ref() };
 		for _ in 0..index {
-			curr = unsafe { curr.as_ref() }.next.as_ref()?;
+			curr = unsafe { curr.next.as_ref()?.as_ref() };
 		}
-		Some(unsafe { curr.as_ref() })
+		Some(curr)
 	}
 
 	fn get_internal_back(&self, index: usize) -> Option<&ListNode<T>> {
-		let mut curr = self.end.as_ref()?;
+		//Safety: All pointers are ensured valid in the insertion and removal functions.
+		// This could've just been normal references if it hadn't've been doubly linked.
+		// Therefore list traversal is ok
+		let mut curr = unsafe { self.end.as_ref()?.as_ref() };
 		for _ in 0..index {
-			curr = unsafe { curr.as_ref() }.prev.as_ref()?;
+			curr = unsafe { curr.prev.as_ref()?.as_ref() };
 		}
-		Some(unsafe { curr.as_ref() })
+		Some(curr)
 	}
 
 	fn get_internal_mut(&mut self, index: usize) -> Option<&mut ListNode<T>> {
-		let mut curr = self.start.as_mut()?;
+		//Safety: All pointers are ensured valid in the insertion and removal functions.
+		// This could've just been normal references if it hadn't've been doubly linked.
+		// Therefore list traversal is ok
+		let mut curr = unsafe { self.start.as_mut()?.as_mut() };
 		for _ in 0..index {
-			curr = unsafe { curr.as_mut() }.next.as_mut()?;
+			curr = unsafe { curr.next.as_mut()?.as_mut() };
 		}
-		Some(unsafe { curr.as_mut() })
+		Some(curr)
 	}
 
 	fn get_internal_back_mut(&mut self, index: usize) -> Option<&mut ListNode<T>> {
-		let mut curr = self.end.as_mut()?;
+		//Safety: All pointers are ensured valid in the insertion and removal functions.
+		// This could've just been normal references if it hadn't've been doubly linked.
+		// Therefore list traversal is ok
+		let mut curr = unsafe { self.end.as_mut()?.as_mut() };
 		for _ in 0..index {
-			curr = unsafe { curr.as_mut() }.prev.as_mut()?;
+			curr = unsafe { curr.prev.as_mut()?.as_mut() };
 		}
-		Some(unsafe { curr.as_mut() })
+		Some(curr)
 	}
 
 	pub fn get(&self, index: usize) -> Option<&T> {
@@ -331,14 +359,24 @@ impl<'a, T> List<T> {
 		let mut first = self
 			.start
 			.expect("Bounds already checked? len is incorrectly set");
+		//Safety: Existing pointer is trusted, as it was checked upon creation
+		// and if there's an error it's in insertion, not here
 		let element = unsafe { first.as_mut() };
 		self.start = element.next;
+		//Safety: Honestly don't understand why this is ok, but it's what the
+		// standard library does in vec::remove, and it works
 		let ret = unsafe { ptr::read(&element.val as *const T) };
 		if let Some(mut ptr) = self.start {
+			//Safety: Existing pointer, trusted
 			let new_start = unsafe { ptr.as_mut() };
 			new_start.prev = None;
 		}
 		let ptr = element as *mut ListNode<T>;
+		//Safety: The first node has two pointers pointing towards it: self.start
+		// and the second node's .prev. Both of these have been updated and as the
+		// function requires a &mut reference there can be no outside reference to
+		// the node. Therefore it should be safe to deallocate using a layout
+		// specifically created from it.
 		let layout = Layout::for_value(element);
 		unsafe { alloc::dealloc(ptr as *mut u8, layout) };
 		if self.is_empty() {
@@ -354,14 +392,24 @@ impl<'a, T> List<T> {
 		let mut last = self
 			.end
 			.expect("Bounds already checked? len is incorrectly set");
+		//Safety: Existing pointer is trusted, as it was checked upon creation
+		// and if there's an error it's in insertion, not here
 		let element = unsafe { last.as_mut() };
 		self.end = element.prev;
+		//Safety: Honestly don't understand why this is ok, but it's what the
+		// standard library does in vec::remove, and it works
 		let ret = unsafe { ptr::read(&element.val as *const T) };
 		if let Some(mut ptr) = self.end {
+			//Safety: Existing pointer, trusted
 			let new_end = unsafe { ptr.as_mut() };
 			new_end.next = None;
 		}
 		let ptr = element as *mut ListNode<T>;
+		//Safety: The last node has two pointers pointing towards it: self.end
+		// and the second to last node's .next. Both of these have been updated
+		// and as the function requires a &mut reference there can be no outside
+		// reference to the node. Therefore it should be safe to deallocate using
+		// a layout specifically created from it.
 		let layout = Layout::for_value(element);
 		unsafe { alloc::dealloc(ptr as *mut u8, layout) };
 		if self.is_empty() {
@@ -390,6 +438,7 @@ impl<'a, T> List<T> {
 		let element = self.get_internal_mut(index).expect("Out of bounds?");
 		let mut prev = element.prev.expect("Previous node missing!");
 		let mut next = element.next.expect("Next node missing!");
+		//Safety: Existing pointers are trusted
 		let prev_r = unsafe { prev.as_mut() };
 		let next_r = unsafe { next.as_mut() };
 		prev_r.next = element.next;
@@ -397,6 +446,10 @@ impl<'a, T> List<T> {
 
 		let ret = unsafe { ptr::read(&element.val as *const T) };
 		let ptr = element as *mut ListNode<T>;
+		//Safety: The pointers from both the next and previous nodes have been updated,
+		// the function requires &mut so no outside references can point to the node.
+		// Therefore the element should be safe to deallocate with a layout specifically
+		// created from it.
 		let layout = Layout::for_value(element);
 		unsafe { alloc::dealloc(ptr as *mut u8, layout) };
 		ret
@@ -413,6 +466,7 @@ impl<'a, T> List<T> {
 		let element = self.get_internal_back_mut(index).expect("Out of bounds?");
 		let mut prev = element.prev.expect("Previous node missing!");
 		let mut next = element.next.expect("Next node missing!");
+		//Safety: Existing pointers are trusted
 		let prev_r = unsafe { prev.as_mut() };
 		let next_r = unsafe { next.as_mut() };
 		prev_r.next = element.next;
@@ -420,6 +474,10 @@ impl<'a, T> List<T> {
 
 		let ret = unsafe { ptr::read(&element.val as *const T) };
 		let ptr = element as *mut ListNode<T>;
+		//Safety: The pointers from both the next and previous nodes have been updated,
+		// the function requires &mut so no outside references can point to the node.
+		// Therefore the element should be safe to deallocate with a layout specifically
+		// created from it.
 		let layout = Layout::for_value(element);
 		unsafe { alloc::dealloc(ptr as *mut u8, layout) };
 		ret
