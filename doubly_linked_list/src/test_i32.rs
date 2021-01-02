@@ -349,3 +349,17 @@ fn print() {
 	let arr_str = format!("{:?}", arr);
 	assert_eq!(list_str, arr_str);
 }
+
+#[test]
+fn borrowed_double_iterator() {
+	let mut list = List::new();
+	list.push_back(1);
+	list.push_back(2);
+	list.push_back(3);
+	let mut iter = list.iter();
+	assert_eq!(iter.next(), Some(&1));
+	assert_eq!(iter.next_back(), Some(&3));
+	assert_eq!(iter.next(), Some(&2));
+	assert_eq!(iter.next_back(), None);
+	assert_eq!(iter.next(), None);
+}

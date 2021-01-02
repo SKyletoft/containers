@@ -23,43 +23,52 @@ impl<T> DoubleEndedIterator for ListIterator<T> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BorrowedListIterator<'a, T> {
-	pub(crate) list: &'a List<T>,
-	pub(crate) node: Option<&'a ListNode<T>>,
+	pub(crate) front: Option<&'a ListNode<T>>,
+	pub(crate) back: Option<&'a ListNode<T>>,
 }
 
 impl<'a, T> Iterator for BorrowedListIterator<'a, T> {
 	type Item = &'a T;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if let Some(node) = self.node {
-			let ptr = node.next?;
+		let front = self.front?;
+		let back = self.back.expect("Back shouldn't be none if front wasn't");
+
+		let value = &front.val;
+		//Compares that actual allocations rather than values
+		if ptr::eq(front, back) {
+			//If equal, the iterator has been exhausted
+			self.front = None;
+			self.back = None;
+		} else {
+			let ptr = front.next.expect("Next should not be null");
 			//Safety: pointers are trusted. As these pointers are only
 			// read and not offset any incorrect behaviour is not caused here
 			let next = unsafe { &*ptr.as_ptr() };
-			self.node = Some(next);
-			Some(&next.val)
-		} else {
-			//Safety: Same as above
-			let first = unsafe { &*self.list.start?.as_ptr() };
-			self.node = Some(first);
-			Some(&first.val)
+			self.front = Some(next);
 		}
+		Some(&value)
 	}
 }
 
 impl<'a, T> DoubleEndedIterator for BorrowedListIterator<'a, T> {
 	fn next_back(&mut self) -> Option<Self::Item> {
-		if let Some(node) = self.node {
-			let ptr = node.prev?;
-			//Safety: Same as in the forwards iterator
-			let prev = unsafe { &*ptr.as_ptr() };
-			self.node = Some(prev);
-			Some(&prev.val)
+		let front = self.front?;
+		let back = self.back.expect("Back shouldn't be none if front wasn't");
+
+		let value = &back.val;
+		//Compares that actual allocations rather than values
+		if ptr::eq(front, back) {
+			//If equal, the iterator has been exhausted
+			self.front = None;
+			self.back = None;
 		} else {
-			//Safety: Same as in the forwards iterator
-			let last = unsafe { &*self.list.end?.as_ptr() };
-			self.node = Some(last);
-			Some(&last.val)
+			let ptr = back.prev.expect("Next should not be null");
+			//Safety: pointers are trusted. As these pointers are only
+			// read and not offset any incorrect behaviour is not caused here
+			let prev = unsafe { &*ptr.as_ptr() };
+			self.back = Some(prev);
 		}
+		Some(&value)
 	}
 }

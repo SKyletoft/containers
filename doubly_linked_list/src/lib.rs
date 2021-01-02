@@ -108,8 +108,9 @@ impl<'a, T> IntoIterator for &'a List<T> {
 
 	fn into_iter(self) -> Self::IntoIter {
 		BorrowedListIterator {
-			list: self,
-			node: None,
+			//Safety: Existing pointers are trusted
+			front: self.start.as_ref().map(|node| unsafe { node.as_ref() }),
+			back: self.end.as_ref().map(|node| unsafe { node.as_ref() }),
 		}
 	}
 }
@@ -253,7 +254,7 @@ impl<'a, T> List<T> {
 	///
 	/// Will panic if the index is out of bounds. Has O(n) complexity.
 	pub fn insert(&mut self, index: usize, elem: T) {
-		if index <= self.len() / 2 {
+		if index <= self.len() / 2 || index > self.len() {
 			self.insert_front(index, elem)
 		} else {
 			self.insert_back(self.len() - index - 1, elem)
@@ -392,9 +393,10 @@ impl<'a, T> List<T> {
 	///
 	/// Will return `None` if index is out of bounds. Has O(n) complexity.
 	pub fn get(&self, index: usize) -> Option<&T> {
-		if index <= self.len() / 2 {
+		if index <= self.len() / 2 || index <= self.len() {
 			self.get_front(index)
 		} else {
+			dbg!(index, self.len);
 			self.get_back(self.len() - index - 1)
 		}
 	}
@@ -424,7 +426,7 @@ impl<'a, T> List<T> {
 	///
 	/// Will return `None` if index is out of bounds. Has O(n) complexity.
 	pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
-		if index <= self.len() / 2 {
+		if index <= self.len() / 2 || index >= self.len() {
 			self.get_front_mut(index)
 		} else {
 			self.get_back_mut(self.len() - index - 1)
@@ -527,7 +529,7 @@ impl<'a, T> List<T> {
 	///
 	/// Panics if index is out of bounds. Has O(n) complexity.
 	pub fn remove(&mut self, index: usize) -> T {
-		if index <= self.len() / 2 {
+		if index <= self.len() / 2 || index >= self.len() {
 			self.remove_front(index)
 		} else {
 			self.remove_back(self.len() - index - 1)
