@@ -340,3 +340,12 @@ fn prepend() {
 		.zip(expected.iter().rev())
 		.for_each(|(a, b)| assert_eq!(a, b));
 }
+
+#[test]
+fn print() {
+	let arr = [1, 2, 3, 4, 5];
+	let list = arr.iter().copied().collect::<List<_>>();
+	let list_str = format!("{:?}", list);
+	let arr_str = format!("{:?}", arr);
+	assert_eq!(list_str, arr_str);
+}

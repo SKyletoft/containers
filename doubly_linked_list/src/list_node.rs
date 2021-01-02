@@ -1,5 +1,7 @@
 use crate::*;
 
+///A List Node for the List containing a value and two pointers to the
+/// next and previous nodes in the list.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ListNode<T> {
 	pub(crate) val: T,
@@ -8,6 +10,8 @@ pub struct ListNode<T> {
 }
 
 impl<T> ListNode<T> {
+	///Allocates a new node containing the passed element. Will panic on allocation
+	/// failure.
 	pub fn new_alloc(elem: ListNode<T>) -> Option<NonNull<ListNode<T>>> {
 		let layout = Layout::for_value(&elem);
 		let ptr = unsafe {

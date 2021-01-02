@@ -7,18 +7,51 @@ const REMOVALS: i32 = 5000;
 const LOOPS: usize = 1000;
 
 fn main() {
-	if std::env::args().nth(1).map(|s| &s == "std") == Some(true) {
-		print!("\nstd");
-		for _ in 0..LOOPS {
-			standard();
+	let action = std::env::args()
+		.nth(1)
+		.map(|r| match r.as_str() {
+			"std" => Action::Std,
+			"custom" => Action::Custom,
+			"insert" => Action::Insert,
+			"front" => Action::Front,
+			_ => panic!("Please provide a benchmark to run in the arguments"),
+		})
+		.expect("Please provide a benchmark to run in the arguments");
+	match action {
+		Std => {
+			print!("\nstd");
+			for _ in 0..LOOPS {
+				standard();
+			}
 		}
-	} else {
-		print!("\ncustom");
-		for _ in 0..LOOPS {
-			mine();
+		Custom => {
+			print!("\ncustom");
+			for _ in 0..LOOPS {
+				mine();
+			}
+		}
+		Insert => {
+			print!("\ninsert");
+			for _ in 0..LOOPS {
+				insert();
+			}
+		}
+		Front => {
+			print!("\ninsert_front");
+			for _ in 0..LOOPS {
+				insert_front();
+			}
 		}
 	}
 }
+
+enum Action {
+	Std,
+	Custom,
+	Insert,
+	Front,
+}
+use Action::*;
 
 fn mine() -> i32 {
 	let mut rng = rand::thread_rng();
@@ -44,6 +77,28 @@ fn standard() -> i32 {
 		let mut snd = list.split_off(rng.gen::<usize>() % list.len());
 		snd.pop_front();
 		list.append(&mut snd);
+	}
+	list.iter().sum()
+}
+
+fn insert() -> i32 {
+	let mut rng = rand::thread_rng();
+	let mut list = List::new();
+	list.push_front(0);
+	for x in 1..ADDITIONS {
+		let idx = rng.gen::<usize>() % list.len();
+		list.insert(idx, x);
+	}
+	list.iter().sum()
+}
+
+fn insert_front() -> i32 {
+	let mut rng = rand::thread_rng();
+	let mut list = List::new();
+	list.push_front(0);
+	for x in 1..ADDITIONS {
+		let idx = rng.gen::<usize>() % list.len();
+		list.insert_front(idx, x);
 	}
 	list.iter().sum()
 }

@@ -22,6 +22,9 @@ use iterator::{BorrowedListIterator, ListIterator};
 
 pub mod error;
 
+///A doubly linked list of T. Each node is T + 2 usizes large. Nothing is allocated by default.
+/// Has the nonstandard feature of allowing isize indexing where negative values count from the
+/// end of the list.
 pub struct List<T> {
 	pub(crate) start: Option<NonNull<ListNode<T>>>,
 	pub(crate) end: Option<NonNull<ListNode<T>>>,
@@ -34,7 +37,7 @@ impl<T: fmt::Debug> fmt::Debug for List<T> {
 			return write!(f, "[]");
 		}
 		write!(f, "[")?;
-		for elem in self.iter().take(self.len()) {
+		for elem in self.iter().take(self.len() - 1) {
 			write!(f, "{:?}, ", elem)?;
 		}
 		write!(
@@ -55,21 +58,13 @@ impl<T> Index<usize> for List<T> {
 	type Output = T;
 
 	fn index(&self, index: usize) -> &Self::Output {
-		if index <= self.len / 2 {
-			self.get(index).expect("Out of bounds")
-		} else {
-			self.get_back(self.len - index).expect("Out of bounds")
-		}
+		self.get(index).expect("Out of bounds")
 	}
 }
 
 impl<T> IndexMut<usize> for List<T> {
 	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-		if index <= self.len / 2 {
-			self.get_mut(index).expect("Out of bounds")
-		} else {
-			self.get_back_mut(self.len - index).expect("Out of bounds")
-		}
+		self.get_mut(index).expect("Out of bounds")
 	}
 }
 
@@ -78,7 +73,7 @@ impl<T> Index<isize> for List<T> {
 
 	fn index(&self, index: isize) -> &Self::Output {
 		if index.is_positive() {
-			self.get(index as usize).expect("Out of bounds")
+			self.get_front(index as usize).expect("Out of bounds")
 		} else {
 			self.get_back(index.abs() as usize).expect("Out of bounds")
 		}
@@ -88,7 +83,7 @@ impl<T> Index<isize> for List<T> {
 impl<T> IndexMut<isize> for List<T> {
 	fn index_mut(&mut self, index: isize) -> &mut Self::Output {
 		if index.is_positive() {
-			self.get_mut(index as usize).expect("Out of bounds")
+			self.get_front_mut(index as usize).expect("Out of bounds")
 		} else {
 			self.get_back_mut(index.abs() as usize)
 				.expect("Out of bounds")
@@ -140,12 +135,20 @@ impl<T> Drop for List<T> {
 	}
 }
 
+//Manually implemented instead of derrived due to the structure being implemented
+// with pointers rather than properly owned Boxed nodes. If Clone were derrived
+// instead it would clone the pointer to the same allocation.
+///Clones a list with new allocations of every cloned node. Has O(n) complexity
 impl<T: Clone> Clone for List<T> {
 	fn clone(&self) -> Self {
 		self.iter().cloned().collect()
 	}
 }
 
+//Manually implemented so that the list items are compared rather than the raw pointer
+// values.
+///Compares a list node by node. Will short circuit if lists are of different length.
+/// Otherwise has O(n) complexity.
 impl<T: PartialEq> PartialEq for List<T> {
 	fn eq(&self, other: &Self) -> bool {
 		if self.len != other.len {
@@ -156,6 +159,7 @@ impl<T: PartialEq> PartialEq for List<T> {
 }
 
 impl<'a, T> List<T> {
+	///Creates a new list with no new allocations.
 	pub fn new() -> Self {
 		Self {
 			start: None,
@@ -164,18 +168,23 @@ impl<'a, T> List<T> {
 		}
 	}
 
+	///Returns the length of the list. This length is stored and not calculated.
+	/// for O(1) complexity
 	pub fn len(&self) -> usize {
 		self.len
 	}
 
+	///Checks if the list is empty. Has O(1) complexity.
 	pub fn is_empty(&self) -> bool {
 		self.len == 0
 	}
 
+	///Helper function for an iterator over the (borrowed) elements in the list.
 	pub fn iter(&'a self) -> BorrowedListIterator<'a, T> {
 		self.into_iter()
 	}
 
+	///Pushes an element to the back of the list. Has O(1) complexity.
 	pub fn push_back(&mut self, elem: T) {
 		if let Some(mut last) = self.end {
 			debug_assert!(self.start.is_some());
@@ -190,7 +199,7 @@ impl<'a, T> List<T> {
 			//Safety: The existing pointer is trusted as it shouldn't pass
 			// the assertions around its creation otherwise.
 			// The new pointer is trusted due to an assertion that the allocation
-			// succeded in the new_alloc function and the layouts being correct there
+			// succeded in the new_alloc function and the layouts being correct there.
 			unsafe { last.as_mut() }.next = ptr;
 		} else {
 			debug_assert!(self.start.is_none());
@@ -206,6 +215,7 @@ impl<'a, T> List<T> {
 		self.len += 1;
 	}
 
+	///Pushes an element to the front of the list. Has O(1) complexity.
 	pub fn push_front(&mut self, elem: T) {
 		if let Some(mut first) = self.start {
 			debug_assert!(self.end.is_some());
@@ -229,6 +239,10 @@ impl<'a, T> List<T> {
 		}
 	}
 
+	///Inserts an element into the list from either the front or back.
+	/// It's always faster than calling insert_front or insert_back directly by selecting
+	/// which one is less work based on how close the index is to either end of the list.
+	/// Will panic if the index is out of bounds. Has O(n) complexity.
 	pub fn insert(&mut self, index: usize, elem: T) {
 		if index <= self.len() / 2 {
 			self.insert_front(index, elem)
@@ -237,10 +251,16 @@ impl<'a, T> List<T> {
 		}
 	}
 
+	///Inserts an element into the list from the front. It's typically faster to call insert
+	/// due to that function selecting between this and insert_back based on the index.
+	/// Has O(n) complexity. Will panic if index is out of bounds.
 	pub fn insert_front(&mut self, index: usize, elem: T) {
 		if self.len() < index {
 			panic!("Index beyond last element of list!");
 		}
+		//Use push_back or push_front if first or last in list so that the case in
+		// this function will always handle an element with both a node in front and
+		// behind.
 		if self.len() == index {
 			return self.push_back(elem);
 		}
@@ -265,10 +285,16 @@ impl<'a, T> List<T> {
 		self.len += 1;
 	}
 
+	///Inserts an element into the list from the bacj. It's typically faster to call insert
+	/// due to that function selecting between this and insert_front based on the index.
+	/// Has O(n) complexity. Will panic if index is out of bounds.
 	pub fn insert_back(&mut self, index: usize, elem: T) {
 		if self.len() < index {
 			panic!("Index beyond first element of list!");
 		}
+		//Use push_back or push_front if first or last in list so that the case in
+		// this function will always handle an element with both a node in front and
+		// behind.
 		if self.len() == index {
 			return self.push_front(elem);
 		}
@@ -293,6 +319,8 @@ impl<'a, T> List<T> {
 		self.len += 1;
 	}
 
+	///Gets a reference to the node at that position in the list from the front.
+	/// Returns None if index is out of bounds. Has O(n) complexity
 	fn get_internal(&self, index: usize) -> Option<&ListNode<T>> {
 		//Safety: All pointers are ensured valid in the insertion and removal functions.
 		// This could've just been normal references if it hadn't've been doubly linked.
@@ -304,6 +332,8 @@ impl<'a, T> List<T> {
 		Some(curr)
 	}
 
+	///Gets a reference to the node at that position in the list from the back.
+	/// Returns None if index is out of bounds. Has O(n) complexity
 	fn get_internal_back(&self, index: usize) -> Option<&ListNode<T>> {
 		//Safety: All pointers are ensured valid in the insertion and removal functions.
 		// This could've just been normal references if it hadn't've been doubly linked.
@@ -315,6 +345,8 @@ impl<'a, T> List<T> {
 		Some(curr)
 	}
 
+	///Gets a mutable reference to the node at that position in the list from the front.
+	/// Returns None if index is out of bounds. Has O(n) complexity
 	fn get_internal_mut(&mut self, index: usize) -> Option<&mut ListNode<T>> {
 		//Safety: All pointers are ensured valid in the insertion and removal functions.
 		// This could've just been normal references if it hadn't've been doubly linked.
@@ -326,6 +358,8 @@ impl<'a, T> List<T> {
 		Some(curr)
 	}
 
+	///Gets a mutable reference to the node at that position in the list from the back.
+	/// Returns None if index is out of bounds. Has O(n) complexity
 	fn get_internal_back_mut(&mut self, index: usize) -> Option<&mut ListNode<T>> {
 		//Safety: All pointers are ensured valid in the insertion and removal functions.
 		// This could've just been normal references if it hadn't've been doubly linked.
@@ -337,24 +371,72 @@ impl<'a, T> List<T> {
 		Some(curr)
 	}
 
+	///Gets a reference to the value at that position from either the front or back.
+	/// Will return None if index is out of bounds.
+	/// It's typically faster than calling get_front or get_back directly by selecting
+	/// which one is less work based on how close the index is to either end of the list.
+	/// Has O(n) complexity.
 	pub fn get(&self, index: usize) -> Option<&T> {
+		if index <= self.len() / 2 {
+			self.get_front(index)
+		} else {
+			self.get_back(self.len() - index - 1)
+		}
+	}
+
+	///Gets a reference to the value at that position in the list from the front.
+	/// Will return None if index is out of bounds. get is always faster or equal due to
+	/// selecting this or get_back by selecting which one is less work based on how close
+	/// the index is from either end of the list.
+	/// Has O(n) complexity.
+	pub fn get_front(&self, index: usize) -> Option<&T> {
 		self.get_internal(index).map(|v| &v.val)
 	}
 
+	///Gets a reference to the value at that position in the list from the back.
+	/// Will return None if index is out of bounds. get is always faster or equal due to
+	/// selecting this or get_front by selecting which one is less work based on how close
+	/// the index is from either end of the list.
+	/// Has O(n) complexity.
 	pub fn get_back(&self, index: usize) -> Option<&T> {
 		self.get_internal_back(index).map(|v| &v.val)
 	}
 
+	///Gets a mutable reference to the value at that position from either the front or back.
+	/// Will return None if index is out of bounds.
+	/// It's typically faster than calling get_front or get_back directly by selecting
+	/// which one is less work based on how close the index is to either end of the list.
+	/// Has O(n) complexity.
 	pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
+		if index <= self.len() / 2 {
+			self.get_front_mut(index)
+		} else {
+			self.get_back_mut(self.len() - index - 1)
+		}
+	}
+
+	///Gets a mutable reference to the value at that position in the list from the front.
+	/// Will return None if index is out of bounds. get is always faster or equal due to
+	/// selecting this or get_back by selecting which one is less work based on how close
+	/// the index is from either end of the list.
+	/// Has O(n) complexity.
+	pub fn get_front_mut(&mut self, index: usize) -> Option<&mut T> {
 		self.get_internal_mut(index).map(|v| &mut v.val)
 	}
 
+	///Gets a mutable reference to the value at that position in the list from the back.
+	/// Will return None if index is out of bounds. get is always faster or equal due to
+	/// selecting this or get_front by selecting which one is less work based on how close
+	/// the index is from either end of the list.
+	/// Has O(n) complexity.
 	pub fn get_back_mut(&mut self, index: usize) -> Option<&mut T> {
 		self.get_internal_back_mut(index).map(|v| &mut v.val)
 	}
 
+	///Removes and returns the first element in the list. Panics if list is empty.
+	/// Has O(1) complexity.
 	pub fn pop_front(&mut self) -> T {
-		debug_assert!(!self.is_empty());
+		assert!(!self.is_empty(), "List is empty");
 		self.len -= 1;
 		let mut first = self
 			.start
@@ -386,8 +468,10 @@ impl<'a, T> List<T> {
 		ret
 	}
 
+	///Removes and returns last element in list. Panics if list is empty.
+	/// Has O(1) time complexity.
 	pub fn pop_back(&mut self) -> T {
-		debug_assert!(!self.is_empty());
+		assert!(!self.is_empty(), "List is empty");
 		self.len -= 1;
 		let mut last = self
 			.end
@@ -419,6 +503,10 @@ impl<'a, T> List<T> {
 		ret
 	}
 
+	///Removes and returns element in list at index. Panics if index is out of bounds.
+	/// It is typically faster than remove_front or remove_back due to selecting the one
+	/// which is the least work based on the index and length.
+	/// Has O(n) complexity.
 	pub fn remove(&mut self, index: usize) -> T {
 		if index <= self.len() / 2 {
 			self.remove_front(index)
@@ -427,7 +515,14 @@ impl<'a, T> List<T> {
 		}
 	}
 
+	///Removes and returns element in list at index from the front. Panics if index is out
+	/// of bounds. It is typically faster to use remove due to it selecting this or
+	/// remove_back based on the index.
+	/// Has O(n) complexity.
 	pub fn remove_front(&mut self, index: usize) -> T {
+		if index > self.len() {
+			panic!("Index was out of bounds");
+		}
 		if index == 0 {
 			return self.pop_front();
 		}
@@ -435,7 +530,9 @@ impl<'a, T> List<T> {
 			return self.pop_back();
 		}
 		self.len -= 1;
-		let element = self.get_internal_mut(index).expect("Out of bounds?");
+		let element = self
+			.get_internal_mut(index)
+			.expect("Unexpected out of bounds?");
 		let mut prev = element.prev.expect("Previous node missing!");
 		let mut next = element.next.expect("Next node missing!");
 		//Safety: Existing pointers are trusted
@@ -455,7 +552,14 @@ impl<'a, T> List<T> {
 		ret
 	}
 
+	///Removes and returns element in list at index from the back. Panics if index is out
+	/// of bounds. It is typically faster to use remove due to it selecting this or
+	/// remove_front based on the index.
+	/// Has O(n) complexity.
 	pub fn remove_back(&mut self, index: usize) -> T {
+		if index > self.len() {
+			panic!("Index was out of bounds");
+		}
 		if index == 0 {
 			return self.pop_back();
 		}
@@ -463,7 +567,9 @@ impl<'a, T> List<T> {
 			return self.pop_front();
 		}
 		self.len -= 1;
-		let element = self.get_internal_back_mut(index).expect("Out of bounds?");
+		let element = self
+			.get_internal_back_mut(index)
+			.expect("Unexpected out of bounds?");
 		let mut prev = element.prev.expect("Previous node missing!");
 		let mut next = element.next.expect("Next node missing!");
 		//Safety: Existing pointers are trusted
@@ -483,6 +589,10 @@ impl<'a, T> List<T> {
 		ret
 	}
 
+	///Splits the current list in two by cutting the current list off at index and returning
+	/// the rest as a new list. Panics if index is out of bounds. Will return current list
+	/// and replace this list with a new one if index is 0.
+	/// Has O(n) complexity.
 	pub fn split_off(&mut self, index: usize) -> Self {
 		if index >= self.len {
 			panic!()
@@ -516,6 +626,8 @@ impl<'a, T> List<T> {
 		list
 	}
 
+	///Appends the other list at the end of the current list. Leaves the other list empty.
+	/// Has O(1) complexity.
 	pub fn append(&mut self, other: &mut Self) {
 		if self.is_empty() {
 			mem::swap(self, other);
@@ -533,6 +645,8 @@ impl<'a, T> List<T> {
 		other.end = None;
 	}
 
+	///Appends the other list at the start of the current list. Leaves the other list empty.
+	/// Has O(1) complexity.
 	pub fn prepend(&mut self, other: &mut Self) {
 		if self.is_empty() {
 			mem::swap(self, other);
