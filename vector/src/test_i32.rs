@@ -48,3 +48,95 @@ fn as_slice() {
 	vec.push(5);
 	assert_eq!(vec.as_slice(), &[1, 2, 3, 4, 5]);
 }
+
+#[test]
+fn iterator() {
+	let mut vec = Vector::with_capacity(5);
+	vec.push(1);
+	vec.push(2);
+	vec.push(3);
+	vec.push(4);
+	vec.push(5);
+	let std_vec = vec![1, 2, 3, 4, 5];
+	let mut std_iter = std_vec.into_iter();
+	let mut iter = vec.into_iter();
+	for _ in 0..6 {
+		assert_eq!(std_iter.next(), iter.next());
+	}
+}
+
+#[test]
+fn back_iterator() {
+	let mut vec = Vector::with_capacity(5);
+	vec.push(1);
+	vec.push(2);
+	vec.push(3);
+	vec.push(4);
+	vec.push(5);
+	let std_vec = vec![1, 2, 3, 4, 5];
+	let mut std_iter = std_vec.into_iter().rev();
+	let mut iter = vec.into_iter().rev();
+	for _ in 0..6 {
+		assert_eq!(std_iter.next(), iter.next());
+	}
+}
+
+#[test]
+fn both_iterator() {
+	let mut list = Vector::new();
+	list.push(1);
+	list.push(2);
+	list.push(3);
+	let mut iter = list.into_iter();
+	assert_eq!(iter.next(), Some(1));
+	assert_eq!(iter.next_back(), Some(3));
+	assert_eq!(iter.next(), Some(2));
+	assert_eq!(iter.next_back(), None);
+	assert_eq!(iter.next(), None);
+}
+
+#[test]
+fn borrowed_iterator() {
+	let mut vec = Vector::with_capacity(5);
+	vec.push(1);
+	vec.push(2);
+	vec.push(3);
+	vec.push(4);
+	vec.push(5);
+	let std_vec = vec![1, 2, 3, 4, 5];
+	let mut std_iter = std_vec.iter();
+	let mut iter = vec.iter();
+	for _ in 0..6 {
+		assert_eq!(std_iter.next(), iter.next());
+	}
+}
+
+#[test]
+fn borrowed_back_iterator() {
+	let mut vec = Vector::with_capacity(5);
+	vec.push(1);
+	vec.push(2);
+	vec.push(3);
+	vec.push(4);
+	vec.push(5);
+	let std_vec = vec![1, 2, 3, 4, 5];
+	let mut std_iter = std_vec.iter().rev();
+	let mut iter = vec.iter().rev();
+	for _ in 0..6 {
+		assert_eq!(std_iter.next(), iter.next());
+	}
+}
+
+#[test]
+fn borrowed_both_iterator() {
+	let mut list = Vector::new();
+	list.push(1);
+	list.push(2);
+	list.push(3);
+	let mut iter = list.iter();
+	assert_eq!(iter.next(), Some(&1));
+	assert_eq!(iter.next_back(), Some(&3));
+	assert_eq!(iter.next(), Some(&2));
+	assert_eq!(iter.next_back(), None);
+	assert_eq!(iter.next(), None);
+}

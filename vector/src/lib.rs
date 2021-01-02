@@ -1,3 +1,5 @@
+pub mod iterator;
+use iterator::{BorrowedVectorIterator, VectorIterator};
 pub mod test_box;
 pub mod test_i32;
 
@@ -39,6 +41,39 @@ impl<T> Index<usize> for Vector<T> {
 	fn index(&self, index: usize) -> &Self::Output {
 		self.get(index).expect("Index was out of bounds")
 	}
+}
+
+impl<T> IntoIterator for Vector<T> {
+	type Item = T;
+
+	type IntoIter = VectorIterator<T>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		VectorIterator {
+			data: self.data,
+			capacity: self.capacity,
+			index: -1isize as usize,
+			index_back: self.size,
+		}
+	}
+}
+
+impl<'a, T> IntoIterator for &'a Vector<T> {
+	type Item = &'a T;
+
+	type IntoIter = BorrowedVectorIterator<'a, T>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		BorrowedVectorIterator {
+			vector: &self,
+			index: -1isize as usize,
+			index_back: self.size,
+		}
+	}
+}
+
+impl<T> Drop for Vector<T> {
+	fn drop(&mut self) {}
 }
 
 impl<T> Vector<T> {
@@ -107,13 +142,11 @@ impl<T> Vector<T> {
 		if idx >= self.size {
 			return None;
 		}
-		unsafe {
-			if let Some(ptr) = self.data {
-				let ptr = &*ptr.as_ptr().add(idx);
-				Some(ptr)
-			} else {
-				None
-			}
+		if let Some(ptr) = self.data {
+			let ptr = unsafe { &*ptr.as_ptr().add(idx) };
+			Some(ptr)
+		} else {
+			None
 		}
 	}
 
@@ -121,13 +154,11 @@ impl<T> Vector<T> {
 		if idx >= self.size {
 			return None;
 		}
-		unsafe {
-			if let Some(ptr) = self.data {
-				let ptr = &mut *ptr.as_ptr();
-				Some(ptr)
-			} else {
-				None
-			}
+		if let Some(ptr) = self.data {
+			let ptr = unsafe { &mut *ptr.as_ptr().add(idx) };
+			Some(ptr)
+		} else {
+			None
 		}
 	}
 
@@ -150,7 +181,10 @@ impl<T> Vector<T> {
 		}
 		assert!(self.size < self.capacity);
 		assert!(self.data.is_some());
-		let data_ptr = self.data.unwrap().as_ptr();
+		let data_ptr = self
+			.data
+			.expect("Vector's data pointer is null despite being just checked?")
+			.as_ptr();
 
 		for i in (idx..=self.size).rev() {
 			unsafe { data_ptr.add(i + 1).write(data_ptr.add(i).read()) };
@@ -164,7 +198,7 @@ impl<T> Vector<T> {
 		if self.size == 0 || self.data.is_none() {
 			return None;
 		}
-		let data_ptr = self.data.unwrap().as_ptr();
+		let data_ptr = self.data.expect("Check above was incorrect?").as_ptr();
 		self.size -= 1;
 		Some(unsafe { data_ptr.add(self.size).read() })
 	}
@@ -177,7 +211,7 @@ impl<T> Vector<T> {
 			panic!("Vector is empty");
 		}
 
-		let data_ptr = self.data.unwrap().as_ptr();
+		let data_ptr = self.data.expect("Check above was incorrect?").as_ptr();
 
 		let ret = unsafe { data_ptr.add(idx).read() };
 		for i in idx..self.size {
@@ -188,19 +222,21 @@ impl<T> Vector<T> {
 		ret
 	}
 
+	///Borrows the vector's allocation as an immutable slice.
 	pub fn as_slice(&self) -> &[T] {
 		if let Some(ptr) = self.data {
 			unsafe {
 				ptr::slice_from_raw_parts(ptr.as_ptr(), self.size)
 					.as_ref()
-					.unwrap()
+					.expect("Vector's internal NonNull pointer was null?")
 			}
 		} else {
-			assert!(self.is_empty());
+			assert!(self.size == 0);
 			&[]
 		}
 	}
 
+	///Sets the length of the vector, within the existing capacity.
 	/// # Safety
 	/// Panics if len is greater than the vector's capacity.
 	/// Exposes potentially uninitialised memory if len is greater than the vector's length.
@@ -209,5 +245,15 @@ impl<T> Vector<T> {
 			panic!();
 		}
 		self.size = len;
+	}
+
+	pub fn iter(&self) -> BorrowedVectorIterator<'_, T> {
+		(&self).into_iter()
+	}
+
+	///Returns the pointer to the allocation of the Vector or
+	/// `None` if nothing has been allocated yet
+	pub fn as_ptr(&self) -> Option<*const T> {
+		self.data.map(|p| p.as_ptr() as *const _)
 	}
 }
