@@ -11,7 +11,7 @@ pub struct ListNode<T> {
 
 impl<T> ListNode<T> {
 	///Allocates a new node containing the passed element. Will panic on allocation
-	/// failure.
+	/// failure so any value returned will be valid.
 	pub fn new_alloc(elem: ListNode<T>) -> Option<NonNull<ListNode<T>>> {
 		let layout = Layout::for_value(&elem);
 		let ptr = unsafe {
