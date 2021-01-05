@@ -76,10 +76,6 @@ impl<'a, T> DoubleEndedIterator for BorrowedListIterator<'a, T> {
 ///The iterator struct for mutably iterating over a list. It is
 /// recommended that you use the `.iter_mut()` method on a list
 /// rather than constructing this struct yourself.
-///# Safety:
-///  This struct is only safe to construct if you
-///  can ensure you have a mutable borrow on the underlying
-///  list, even if the references used are immutable.
 #[derive(Debug, PartialEq)]
 pub struct BorrowedListIteratorMut<'a, T> {
 	pub(crate) front: Option<&'a mut ListNode<T>>,
