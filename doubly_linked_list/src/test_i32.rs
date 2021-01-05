@@ -363,3 +363,30 @@ fn borrowed_double_iterator() {
 	assert_eq!(iter.next_back(), None);
 	assert_eq!(iter.next(), None);
 }
+
+#[test]
+fn borrowed_mutable_iterator() {
+	let mut expected = 2..=11;
+	let mut list: List<i32> = (1..=10).collect();
+	for item in list.iter_mut() {
+		*item += 1;
+	}
+	let mut iter = list.into_iter();
+	for _ in 0..12 {
+		assert_eq!(iter.next(), expected.next());
+	}
+}
+
+#[test]
+fn equality() {
+	let l1: List<i32> = (1..10).collect();
+	let l2: List<i32> = (1..10).collect();
+	assert_eq!(l1, l2);
+}
+
+#[test]
+fn cloning() {
+	let l1: List<i32> = (1..10).collect();
+	let l2 = l1.clone();
+	assert_eq!(l1, l2);
+}

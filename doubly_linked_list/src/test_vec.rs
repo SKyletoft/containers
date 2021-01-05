@@ -106,3 +106,17 @@ fn remove() {
 	assert_eq!(list.get_internal(0).unwrap().prev, None);
 	assert_eq!(list.get_internal(3).unwrap().next, None);
 }
+
+#[test]
+fn borrowed_mutable_iterator() {
+	let mut expected = 2..=11;
+	let mut list = (1..=10).map(Box::new).collect::<List<Box<i32>>>();
+	for item in list.iter_mut() {
+		let r = item.as_mut();
+		*r += 1;
+	}
+	let mut iter = list.iter();
+	for _ in 0..12 {
+		assert_eq!(iter.next().map(|b| b.as_ref()).copied(), expected.next());
+	}
+}

@@ -18,7 +18,7 @@ pub mod list_node;
 use list_node::ListNode;
 
 pub mod iterator;
-use iterator::{BorrowedListIterator, ListIterator};
+use iterator::{BorrowedListIterator, BorrowedListIteratorMut, ListIterator};
 
 pub mod error;
 
@@ -115,6 +115,20 @@ impl<'a, T> IntoIterator for &'a List<T> {
 	}
 }
 
+impl<'a, T> IntoIterator for &'a mut List<T> {
+	type Item = &'a mut T;
+
+	type IntoIter = BorrowedListIteratorMut<'a, T>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		BorrowedListIteratorMut {
+			//Safety: Existing pointers are trusted
+			front: self.start.as_mut().map(|node| unsafe { node.as_mut() }),
+			back: self.end.as_mut().map(|node| unsafe { node.as_mut() }),
+		}
+	}
+}
+
 impl<T> FromIterator<T> for List<T> {
 	fn from_iter<U: IntoIterator<Item = T>>(iter: U) -> Self {
 		let mut list = List::new();
@@ -186,6 +200,11 @@ impl<'a, T> List<T> {
 
 	///Helper function for an iterator over the (borrowed) elements in the list.
 	pub fn iter(&'a self) -> BorrowedListIterator<'a, T> {
+		self.into_iter()
+	}
+
+	///Helper function for an iterator over the (mutably borrowed) elements in the list.
+	pub fn iter_mut(&'a mut self) -> BorrowedListIteratorMut<'a, T> {
 		self.into_iter()
 	}
 
