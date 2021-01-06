@@ -226,13 +226,8 @@ impl<T> Vector<T> {
 		if idx >= self.size {
 			return None;
 		}
-		if let Some(ptr) = self.data {
-			//Safety: Index is already checked.
-			let ptr = unsafe { &*ptr.as_ptr().add(idx) };
-			Some(ptr)
-		} else {
-			None
-		}
+		//Safety: Index is already checked.
+		unsafe { self.data?.as_ptr().add(idx).as_ref() }
 	}
 
 	///Gets a mutable reference to the element at index's position.
@@ -242,13 +237,8 @@ impl<T> Vector<T> {
 		if idx >= self.size {
 			return None;
 		}
-		if let Some(ptr) = self.data {
-			//Safety: Index is already checked.
-			let ptr = unsafe { &mut *ptr.as_ptr().add(idx) };
-			Some(ptr)
-		} else {
-			None
-		}
+		//Safety: Index is already checked.
+		unsafe { self.data?.as_ptr().add(idx).as_mut() }
 	}
 
 	///Inserts element in vector at index, moving everything after it to the right.

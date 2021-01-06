@@ -297,7 +297,10 @@ impl<'a, T> List<T> {
 		if index == 0 {
 			return self.push_front(elem);
 		}
-		let curr = self.get_internal_mut(index).expect("Error in an insertion function, index is less than claimed length yet no element exists at index");
+		let curr = self.get_internal_mut(index).expect(
+			"Error in an insertion function, index is less \
+			than claimed length yet no element exists at index",
+		);
 
 		let mut last_ptr = curr.prev.expect("Pointer to previous missing!?");
 		let ptr = ListNode::new_alloc(ListNode {
@@ -332,7 +335,10 @@ impl<'a, T> List<T> {
 		if index == 0 {
 			return self.push_back(elem);
 		}
-		let curr = self.get_internal_back_mut(index).expect("Error in an insertion function, index is less than claimed length yet no element exists at index");
+		let curr = self.get_internal_back_mut(index).expect(
+			"Error in an insertion function, index is less \
+			than claimed length yet no element exists at index",
+		);
 
 		let mut ptr_from_last = curr.prev.expect("Pointer to previous missing!?");
 		let ptr = ListNode::new_alloc(ListNode {
