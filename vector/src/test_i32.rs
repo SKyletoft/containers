@@ -140,3 +140,26 @@ fn borrowed_both_iterator() {
 	assert_eq!(iter.next_back(), None);
 	assert_eq!(iter.next(), None);
 }
+
+#[test]
+fn drop() {
+	static mut SUM: i32 = 0;
+	#[derive(Clone, Debug)]
+	struct ToDrop {}
+	impl Drop for ToDrop {
+		fn drop(&mut self) {
+			unsafe {
+				SUM += 1;
+			}
+		}
+	}
+	{
+		let mut vec = Vector::with_capacity(10);
+		for _ in 0..10 {
+			vec.push(ToDrop {});
+		}
+		for _ in vec.iter() {}
+		for _ in vec.into_iter() {}
+	}
+	assert_eq!(unsafe { SUM }, 10);
+}

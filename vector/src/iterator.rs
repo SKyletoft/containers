@@ -38,17 +38,21 @@ impl<T> DoubleEndedIterator for VectorIterator<T> {
 // is never droppped itself.
 impl<T> Drop for VectorIterator<T> {
 	fn drop(&mut self) {
-		let cap = self.capacity;
+		let capacity = self.capacity;
 		let data = self.data;
 		//Do proper drops for remaining items in the iterator
 		for _ in self {}
-		if let Some(ptr) = data {
-			let layout = Layout::array::<T>(cap).expect("Cannot recreate layout for deallocation from vector iterator, has capacity been edited?");
-			unsafe { alloc::dealloc(ptr.as_ptr() as *mut u8, layout) }
-		}
+		//Transform the iterator back into a vector to let vector::drop handle resource freeing
+		let _ = Vector {
+			data,
+			capacity,
+			size: 0,
+		};
 	}
 }
 
+//It's probably a better idea from a design perspective to use .iter() and .iter_mut() from std slice
+// But that goes against the design principle of rebuilding the standard library containers myself.
 pub struct BorrowedVectorIterator<'a, T> {
 	pub(crate) vector: &'a Vector<T>,
 	pub(crate) index: usize,
@@ -75,5 +79,50 @@ impl<'a, T> DoubleEndedIterator for BorrowedVectorIterator<'a, T> {
 		}
 		self.index_back = next;
 		self.vector.get(self.index_back)
+	}
+}
+
+pub struct BorrowedVectorIteratorMut<'a, T> {
+	pub(crate) vector: &'a mut Vector<T>,
+	pub(crate) index: usize,
+	pub(crate) index_back: usize,
+}
+
+impl<'a, T> Iterator for BorrowedVectorIteratorMut<'a, T> {
+	type Item = &'a mut T;
+	fn next(&mut self) -> Option<Self::Item> {
+		let next = self.index.wrapping_add(1);
+		if next == self.index_back {
+			return None;
+		}
+		self.index = next;
+		//Safety: While the lifetime last longer than the borrow on the iterator object
+		// it is still limited by the iterator's borrow on the underlying vector.
+		// As you cannot get the same value from an iterator twice, even when using
+		// double ended iterators, rust's memory guarantees are still upheld. (Though
+		// you can get mutable references to several elements at once)
+		self.vector
+			.get_mut(self.index)
+			.map(|r| unsafe { (r as *mut T).as_mut() })
+			.flatten()
+	}
+}
+
+impl<'a, T> DoubleEndedIterator for BorrowedVectorIteratorMut<'a, T> {
+	fn next_back(&mut self) -> Option<Self::Item> {
+		let next = self.index_back.wrapping_sub(1);
+		if next == self.index {
+			return None;
+		}
+		self.index_back = next;
+		//Safety: While the lifetime last longer than the borrow on the iterator object
+		// it is still limited by the iterator's borrow on the underlying vector.
+		// As you cannot get the same value from an iterator twice, even when using
+		// double ended iterators, rust's memory guarantees are still upheld. (Though
+		// you can get mutable references to several elements at once)
+		self.vector
+			.get_mut(self.index_back)
+			.map(|r| unsafe { (r as *mut T).as_mut() })
+			.flatten()
 	}
 }

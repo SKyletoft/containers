@@ -1,9 +1,11 @@
 pub mod iterator;
-use iterator::{BorrowedVectorIterator, VectorIterator};
+use iterator::{BorrowedVectorIterator, BorrowedVectorIteratorMut, VectorIterator};
 pub mod test_box;
 pub mod test_i32;
 
-use std::{alloc, alloc::Layout, fmt, fmt::Debug, ops::Index, ptr, ptr::NonNull};
+use std::{
+	alloc, alloc::Layout, fmt, fmt::Debug, iter::FromIterator, mem, ops::Index, ptr, ptr::NonNull,
+};
 
 const GROWTH_RATE: f64 = 1.25;
 
@@ -48,12 +50,20 @@ impl<T> IntoIterator for Vector<T> {
 
 	type IntoIter = VectorIterator<T>;
 
-	fn into_iter(self) -> Self::IntoIter {
+	fn into_iter(mut self) -> Self::IntoIter {
+		let Vector {
+			data,
+			capacity,
+			size,
+		} = self;
+		//Moves the pointer out of the vector so that the allocation
+		// won't be freed at the end of this block.
+		self.data = None;
 		VectorIterator {
-			data: self.data,
-			capacity: self.capacity,
+			data,
+			capacity,
 			index: -1isize as usize,
-			index_back: self.size,
+			index_back: size,
 		}
 	}
 }
@@ -72,11 +82,49 @@ impl<'a, T> IntoIterator for &'a Vector<T> {
 	}
 }
 
+impl<'a, T> IntoIterator for &'a mut Vector<T> {
+	type Item = &'a mut T;
+
+	type IntoIter = BorrowedVectorIteratorMut<'a, T>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		let size = self.size;
+		BorrowedVectorIteratorMut {
+			vector: self,
+			index: -1isize as usize,
+			index_back: size,
+		}
+	}
+}
+
+impl<T> FromIterator<T> for Vector<T> {
+	fn from_iter<A: IntoIterator<Item = T>>(iter: A) -> Self {
+		let iter = iter.into_iter();
+		let (min, _) = iter.size_hint();
+		let mut vec = Vector::with_capacity(min);
+		for item in iter {
+			vec.push(item);
+		}
+		vec
+	}
+}
+
 impl<T> Drop for Vector<T> {
-	fn drop(&mut self) {}
+	fn drop(&mut self) {
+		if let Some(ptr) = self.data {
+			let ptr = ptr.as_ptr();
+			while !self.is_empty() {
+				self.pop();
+			}
+			let layout = Layout::array::<T>(self.capacity)
+				.expect("Cannot recreate layout. Has capacity been changed?");
+			unsafe { alloc::dealloc(ptr as *mut u8, layout) }
+		}
+	}
 }
 
 impl<T> Vector<T> {
+	///Creates a new vector. Does not allocate till it's needed.
 	pub fn new() -> Self {
 		Vector {
 			data: None,
@@ -85,23 +133,33 @@ impl<T> Vector<T> {
 		}
 	}
 
+	///Creates a new vector with a preallocated buffer with space for `cap` elements.
 	pub fn with_capacity(cap: usize) -> Self {
 		let mut vec = Vector::new();
 		vec.reserve(cap);
 		vec
 	}
 
+	///Checks if the vector has no elements in it. Does not check if there is an allocated buffer or not.
 	pub fn is_empty(&self) -> bool {
 		self.size == 0
 	}
 
+	///Returns the amount of elements stored in the vector.
 	pub fn len(&self) -> usize {
 		self.size
 	}
 
+	///Allocates a new buffer for the vector of specified size.
+	///
+	/// Panics if `new_cap` is smaller than current size or overflows a `usize`. Has O(n) complexity.
 	fn reserve(&mut self, new_cap: usize) {
 		let layout = Layout::array::<T>(new_cap).expect("Overflow");
 		let new_ptr = unsafe { alloc::alloc(layout) as *mut T };
+		assert!(
+			new_cap >= self.size,
+			"New capacity can't contain current vector"
+		);
 		assert!(!new_ptr.is_null());
 		let new_data = NonNull::new(new_ptr);
 		if let Some(old_ptr) = self.data {
@@ -118,6 +176,23 @@ impl<T> Vector<T> {
 		self.capacity = new_cap;
 	}
 
+	///Allocates a new buffer for the vector that is larger by `additional` elements.
+	///
+	/// Panics if `additional` causes it to overflow a `usize`. Has O(n) complexity.
+	pub fn reserve_additional(&mut self, additional: usize) {
+		let new_cap = self
+			.capacity
+			.checked_add(additional)
+			.expect("New size overflowed usize");
+		new_cap
+			.checked_mul(mem::size_of::<T>())
+			.expect("New size overflowed usize");
+		self.reserve(new_cap);
+	}
+
+	///Inserts an element at the back of the vector.
+	///
+	/// Panics if the length of the vector is equal to usize::MAX. Has complexity O(1).
 	pub fn push(&mut self, elem: T) {
 		if self.data.is_none() {
 			self.reserve(2);
@@ -133,16 +208,25 @@ impl<T> Vector<T> {
 		}
 		assert!(self.size < self.capacity);
 		assert!(self.data.is_some());
-		let data_ptr = unsafe { self.data.unwrap().as_ptr().add(self.size).as_mut().unwrap() };
-		*data_ptr = elem;
+		unsafe {
+			self.data
+				.expect("Above assertion failed?")
+				.as_ptr()
+				.add(self.size)
+				.write(elem)
+		};
 		self.size += 1;
 	}
 
+	///Gets a reference to the element at index's position.
+	///
+	/// Returns `None` if index is greater than the length of the vector. Has complexity O(1).
 	pub fn get(&self, idx: usize) -> Option<&T> {
 		if idx >= self.size {
 			return None;
 		}
 		if let Some(ptr) = self.data {
+			//Safety: Index is already checked.
 			let ptr = unsafe { &*ptr.as_ptr().add(idx) };
 			Some(ptr)
 		} else {
@@ -150,11 +234,15 @@ impl<T> Vector<T> {
 		}
 	}
 
+	///Gets a mutable reference to the element at index's position.
+	///
+	/// Returns `None` if index is greater than the length of the vector. Has complexity O(1).
 	pub fn get_mut(&mut self, idx: usize) -> Option<&mut T> {
 		if idx >= self.size {
 			return None;
 		}
 		if let Some(ptr) = self.data {
+			//Safety: Index is already checked.
 			let ptr = unsafe { &mut *ptr.as_ptr().add(idx) };
 			Some(ptr)
 		} else {
@@ -162,6 +250,10 @@ impl<T> Vector<T> {
 		}
 	}
 
+	///Inserts element in vector at index, moving everything after it to the right.
+	/// Will reallocate if length equals capacity.
+	///
+	/// Panics if the vector's length will overflow `usize::MAX`. Has O(n) complexity.
 	pub fn insert(&mut self, idx: usize, elem: T) {
 		if idx == self.size {
 			return self.push(elem);
@@ -194,6 +286,9 @@ impl<T> Vector<T> {
 		self.size += 1;
 	}
 
+	///Removes the last element in the vector
+	///
+	/// Returns `None` if the vector is empty. Has O(1) complexity.
 	pub fn pop(&mut self) -> Option<T> {
 		if self.size == 0 || self.data.is_none() {
 			return None;
@@ -203,7 +298,15 @@ impl<T> Vector<T> {
 		Some(unsafe { data_ptr.add(self.size).read() })
 	}
 
+	///Removes the item at index, moving everything after that by one step to the left.
+	/// If you're removing several elements, consider using the `retain` function for O(n)
+	/// complexity instead of O(n²)
+	///
+	/// Panics if index >= to the vector's length. Has O(n) complexity.
 	pub fn remove(&mut self, idx: usize) -> T {
+		if idx >= self.size {
+			panic!("Index was out of bounds!");
+		}
 		if idx == self.size {
 			return self.pop().expect("Vector is empty");
 		}
@@ -214,7 +317,9 @@ impl<T> Vector<T> {
 		let data_ptr = self.data.expect("Check above was incorrect?").as_ptr();
 
 		let ret = unsafe { data_ptr.add(idx).read() };
-		for i in idx..self.size {
+		//Safety: Copies element by element within the size of the vector's allocation.
+		// `self.size - 1 + 1` keeps this within `self.size`.
+		for i in idx..(self.size - 1) {
 			unsafe { data_ptr.add(i).write(data_ptr.add(i + 1).read()) };
 		}
 
@@ -223,6 +328,8 @@ impl<T> Vector<T> {
 	}
 
 	///Borrows the vector's allocation as an immutable slice.
+	///
+	/// Has complexity O(1).
 	pub fn as_slice(&self) -> &[T] {
 		if let Some(ptr) = self.data {
 			unsafe {
@@ -236,7 +343,25 @@ impl<T> Vector<T> {
 		}
 	}
 
+	///Borrows the vector's allocation as a mutable slice.
+	///
+	/// Has complexity O(1).
+	pub fn as_slice_mut(&mut self) -> &mut [T] {
+		if let Some(ptr) = self.data {
+			unsafe {
+				ptr::slice_from_raw_parts_mut(ptr.as_ptr(), self.size)
+					.as_mut()
+					.expect("Vector's internal NonNull pointer was null?")
+			}
+		} else {
+			assert!(self.size == 0);
+			&mut []
+		}
+	}
+
 	///Sets the length of the vector, within the existing capacity.
+	///
+	/// Has complexity O(1).
 	/// # Safety
 	/// Panics if len is greater than the vector's capacity.
 	/// Exposes potentially uninitialised memory if len is greater than the vector's length.
@@ -247,13 +372,29 @@ impl<T> Vector<T> {
 		self.size = len;
 	}
 
+	///Returns an iterator over borrowed elements of the vector.
+	///
+	/// Has complexity O(1).
 	pub fn iter(&self) -> BorrowedVectorIterator<'_, T> {
 		(&self).into_iter()
 	}
 
+	///Returns an iterator over mutably borrowed elements of the vector.
+	///
+	/// Has complexity O(1).
+	pub fn iter_mut(&mut self) -> BorrowedVectorIteratorMut<'_, T> {
+		(self).into_iter()
+	}
+
 	///Returns the pointer to the allocation of the Vector or
-	/// `None` if nothing has been allocated yet
+	/// `None` if nothing has been allocated yet.
+	///
+	/// Has complexity O(1).
 	pub fn as_ptr(&self) -> Option<*const T> {
 		self.data.map(|p| p.as_ptr() as *const _)
+	}
+
+	pub fn retain(&mut self, _f: fn(&T) -> bool) {
+		todo!()
 	}
 }
