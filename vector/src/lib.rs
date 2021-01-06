@@ -208,6 +208,7 @@ impl<T> Vector<T> {
 		}
 		assert!(self.size < self.capacity);
 		assert!(self.data.is_some());
+		//Safety: Length is checked. If the allocation was already full it is reallocated above.
 		unsafe {
 			self.data
 				.expect("Above assertion failed?")
@@ -279,8 +280,11 @@ impl<T> Vector<T> {
 			.as_ptr();
 
 		for i in (idx..=self.size).rev() {
+			//Safety: Copies element by element within the size of the vector's allocation.
+			// `=self.size` keeps this within `self.size`.
 			unsafe { data_ptr.add(i + 1).write(data_ptr.add(i).read()) };
 		}
+		//Safety: The element that was here has been moved, this is guaranteed in bounds.
 		unsafe { data_ptr.add(idx).write(elem) };
 
 		self.size += 1;
