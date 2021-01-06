@@ -22,8 +22,8 @@ use iterator::{BorrowedListIterator, BorrowedListIteratorMut, ListIterator};
 
 pub mod error;
 
-///A doubly linked list of T. Each node is `size_of::<T>() + 2 * size_of::<usizes>()` large. Nothing is allocated by default.
-/// Has the nonstandard feature of allowing isize indexing where negative values count from the
+///A doubly linked list of `T`. Each node is `size_of::<T>() + 2 * size_of::<usize>()` large. Nothing is allocated by default.
+/// Has the nonstandard feature of allowing `isize` indexing where negative values count from the
 /// end of the list.
 pub struct List<T> {
 	pub(crate) start: Option<NonNull<ListNode<T>>>,
