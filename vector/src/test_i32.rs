@@ -145,7 +145,9 @@ fn borrowed_both_iterator() {
 fn drop() {
 	static mut SUM: i32 = 0;
 	#[derive(Clone, Debug)]
-	struct ToDrop {}
+	struct ToDrop {
+		b: u8,
+	}
 	impl Drop for ToDrop {
 		fn drop(&mut self) {
 			unsafe {
@@ -155,8 +157,8 @@ fn drop() {
 	}
 	{
 		let mut vec = Vector::with_capacity(10);
-		for _ in 0..10 {
-			vec.push(ToDrop {});
+		for i in 0..10 {
+			vec.push(ToDrop { b: i });
 		}
 		for _ in vec.iter() {}
 		for _ in vec.into_iter() {}

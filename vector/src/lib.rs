@@ -4,7 +4,15 @@ pub mod test_box;
 pub mod test_i32;
 
 use std::{
-	alloc, alloc::Layout, fmt, fmt::Debug, iter::FromIterator, mem, ops::Index, ptr, ptr::NonNull,
+	alloc,
+	alloc::Layout,
+	fmt,
+	fmt::Debug,
+	iter::FromIterator,
+	mem,
+	ops::{Index, IndexMut},
+	ptr,
+	ptr::NonNull,
 };
 
 const GROWTH_RATE: f64 = 1.25;
@@ -42,6 +50,12 @@ impl<T> Index<usize> for Vector<T> {
 	type Output = T;
 	fn index(&self, index: usize) -> &Self::Output {
 		self.get(index).expect("Index was out of bounds")
+	}
+}
+
+impl<T> IndexMut<usize> for Vector<T> {
+	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+		self.get_mut(index).expect("Index was out of bounds")
 	}
 }
 
@@ -118,6 +132,8 @@ impl<T> Drop for Vector<T> {
 			}
 			let layout = Layout::array::<T>(self.capacity)
 				.expect("Cannot recreate layout. Has capacity been changed?");
+			//Safety: Capacity is only changed on reallocation, pointer is trusted
+			// and iterators return to vectors for deallocation.
 			unsafe { alloc::dealloc(ptr as *mut u8, layout) }
 		}
 	}
@@ -155,6 +171,7 @@ impl<T> Vector<T> {
 	/// Panics if `new_cap` is smaller than current size or overflows a `usize`. Has O(n) complexity.
 	fn reserve(&mut self, new_cap: usize) {
 		let layout = Layout::array::<T>(new_cap).expect("Overflow");
+		//Safety: Layout is type and capacity checked.
 		let new_ptr = unsafe { alloc::alloc(layout) as *mut T };
 		assert!(
 			new_cap >= self.size,
@@ -164,7 +181,9 @@ impl<T> Vector<T> {
 		let new_data = NonNull::new(new_ptr);
 		if let Some(old_ptr) = self.data {
 			unsafe {
+				//Safety: The new allocation is a seperate allocation, so the copy is guaranteed to not overlap.
 				ptr::copy_nonoverlapping(old_ptr.as_ptr(), new_ptr, self.size);
+				//Safety: The pointer is only changed here in allocation.
 				alloc::dealloc(
 					old_ptr.as_ptr() as *mut u8,
 					Layout::array::<T>(self.capacity)
@@ -269,9 +288,9 @@ impl<T> Vector<T> {
 			.expect("Vector's data pointer is null despite being just checked?")
 			.as_ptr();
 
-		for i in (idx..=self.size).rev() {
+		for i in (idx..self.size).rev() {
 			//Safety: Copies element by element within the size of the vector's allocation.
-			// `=self.size` keeps this within `self.size`.
+			// `self.size` keeps this within `self.size`.
 			unsafe { data_ptr.add(i + 1).write(data_ptr.add(i).read()) };
 		}
 		//Safety: The element that was here has been moved, this is guaranteed in bounds.
@@ -284,11 +303,12 @@ impl<T> Vector<T> {
 	///
 	/// Returns `None` if the vector is empty. Has O(1) complexity.
 	pub fn pop(&mut self) -> Option<T> {
-		if self.size == 0 || self.data.is_none() {
+		if self.size == 0 {
 			return None;
 		}
-		let data_ptr = self.data.expect("Check above was incorrect?").as_ptr();
+		let data_ptr = self.data?.as_ptr();
 		self.size -= 1;
+		//Safety: Existing pointer is trusted.
 		Some(unsafe { data_ptr.add(self.size).read() })
 	}
 
@@ -310,10 +330,11 @@ impl<T> Vector<T> {
 
 		let data_ptr = self.data.expect("Check above was incorrect?").as_ptr();
 
+		//Safety: Index is checked and pointer is trusted.
 		let ret = unsafe { data_ptr.add(idx).read() };
-		//Safety: Copies element by element within the size of the vector's allocation.
-		// `self.size - 1 + 1` keeps this within `self.size`.
 		for i in idx..(self.size - 1) {
+			//Safety: Copies element by element within the size of the vector's allocation.
+			// `self.size - 1 + 1` keeps this within `self.size`.
 			unsafe { data_ptr.add(i).write(data_ptr.add(i + 1).read()) };
 		}
 
@@ -326,6 +347,8 @@ impl<T> Vector<T> {
 	/// Has complexity O(1).
 	pub fn as_slice(&self) -> &[T] {
 		if let Some(ptr) = self.data {
+			//Safety: Or existing pointer and size are trusted as they can't (safely)
+			// be set from outside.
 			unsafe {
 				ptr::slice_from_raw_parts(ptr.as_ptr(), self.size)
 					.as_ref()
@@ -342,6 +365,8 @@ impl<T> Vector<T> {
 	/// Has complexity O(1).
 	pub fn as_slice_mut(&mut self) -> &mut [T] {
 		if let Some(ptr) = self.data {
+			//Safety: Or existing pointer and size are trusted as they can't (safely)
+			// be set from outside.
 			unsafe {
 				ptr::slice_from_raw_parts_mut(ptr.as_ptr(), self.size)
 					.as_mut()
@@ -388,7 +413,34 @@ impl<T> Vector<T> {
 		self.data.map(|p| p.as_ptr() as *const _)
 	}
 
-	pub fn retain(&mut self, _f: fn(&T) -> bool) {
-		todo!()
+	///Removes any element which does not fulfill the requirement passed.
+	/// It is recommended to use this over `remove` in a loop due to time
+	/// complexity and fewer moves.
+	///
+	/// Has complexity O(n)
+	pub fn retain(&mut self, f: fn(&T) -> bool) {
+		if self.data.is_none() {
+			return;
+		}
+		let ptr = self.data.expect("Above check failed?").as_ptr();
+		let mut back = 0;
+		for front in 0..self.size {
+			let ok = f(&self[front]);
+			if ok {
+				if back != front {
+					//Safety: Element is moved within the allocated space (as front is
+					// always greater than back and front is bound by size) without extra
+					// copies or clones which would be required as you otherwise can't move
+					// out of a vector. The element which was overwritten had already been
+					// moved or dropped.
+					unsafe { ptr.add(back).write(ptr.add(front).read()) };
+					back += 1;
+				}
+			} else {
+				//Make sure drop is run and the element is not just left to be overwritten.
+				let _ = unsafe { ptr.add(front).read() };
+			}
+		}
+		self.size = back;
 	}
 }
