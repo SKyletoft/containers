@@ -17,6 +17,9 @@ use std::{
 
 const GROWTH_RATE: f64 = 1.25;
 
+///A resizable contiguous array of `T`. Does not allocate upon creation.
+///
+/// Will panic if created for a zero size type.
 pub struct Vector<T> {
 	pub(crate) data: Option<NonNull<T>>,
 	pub(crate) size: usize,
@@ -142,6 +145,11 @@ impl<T> Drop for Vector<T> {
 impl<T> Vector<T> {
 	///Creates a new vector. Does not allocate till it's needed.
 	pub fn new() -> Self {
+		assert_ne!(
+			std::mem::size_of::<T>(),
+			0,
+			"Vector currently doesn't support storing 0 sized types"
+		);
 		Vector {
 			data: None,
 			size: 0,
@@ -170,6 +178,11 @@ impl<T> Vector<T> {
 	///
 	/// Panics if `new_cap` is smaller than current size or overflows a `usize`. Has O(n) complexity.
 	fn reserve(&mut self, new_cap: usize) {
+		assert_ne!(
+			mem::size_of::<T>(),
+			0,
+			"Vector currently doesn't support storing 0 sized types"
+		);
 		let layout = Layout::array::<T>(new_cap).expect("Overflow");
 		//Safety: Layout is type and capacity checked.
 		let new_ptr = unsafe { alloc::alloc(layout) as *mut T };
