@@ -191,7 +191,7 @@ fn drop() {
 	{
 		let mut vec = Vector::with_capacity(10);
 		for i in 0..10 {
-			vec.push(ToDrop { b: i });
+			vec.push(Box::new(ToDrop { b: i }));
 		}
 		for _ in vec.iter() {}
 		for _ in vec.into_iter() {}
