@@ -1,9 +1,3 @@
-pub mod iterator;
-use iterator::{BorrowedVectorIterator, BorrowedVectorIteratorMut, VectorIterator};
-pub mod test_box;
-pub mod test_i32;
-pub mod test_zst;
-
 use std::{
 	alloc,
 	alloc::Layout,
@@ -15,6 +9,18 @@ use std::{
 	ptr,
 	ptr::NonNull,
 };
+
+#[cfg(test)]
+pub mod test_box;
+
+#[cfg(test)]
+pub mod test_i32;
+
+#[cfg(test)]
+pub mod test_zst;
+
+pub mod iterator;
+use iterator::{BorrowedVectorIterator, BorrowedVectorIteratorMut, VectorIterator};
 
 const GROWTH_RATE: f64 = 1.25;
 
