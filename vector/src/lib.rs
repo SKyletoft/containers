@@ -2,6 +2,7 @@ pub mod iterator;
 use iterator::{BorrowedVectorIterator, BorrowedVectorIteratorMut, VectorIterator};
 pub mod test_box;
 pub mod test_i32;
+pub mod test_zst;
 
 use std::{
 	alloc,
@@ -18,8 +19,6 @@ use std::{
 const GROWTH_RATE: f64 = 1.25;
 
 ///A resizable contiguous array of `T`. Does not allocate upon creation.
-///
-/// Will panic if created for a zero size type.
 pub struct Vector<T> {
 	pub(crate) data: Option<NonNull<T>>,
 	pub(crate) size: usize,
@@ -76,6 +75,7 @@ impl<T> IntoIterator for Vector<T> {
 		//Moves the pointer out of the vector so that the allocation
 		// won't be freed at the end of this block.
 		self.data = None;
+		self.size = 0;
 		VectorIterator {
 			data,
 			capacity,
@@ -128,11 +128,10 @@ impl<T> FromIterator<T> for Vector<T> {
 
 impl<T> Drop for Vector<T> {
 	fn drop(&mut self) {
+		//Outside the loop to handle zero size types
+		self.clear();
 		if let Some(ptr) = self.data {
 			let ptr = ptr.as_ptr();
-			while !self.is_empty() {
-				self.pop();
-			}
 			let layout = Layout::array::<T>(self.capacity)
 				.expect("Cannot recreate layout. Has capacity been changed?");
 			//Safety: Capacity is only changed on reallocation, pointer is trusted
@@ -145,22 +144,24 @@ impl<T> Drop for Vector<T> {
 impl<T> Vector<T> {
 	///Creates a new vector. Does not allocate till it's needed.
 	pub fn new() -> Self {
-		assert_ne!(
-			std::mem::size_of::<T>(),
-			0,
-			"Vector currently doesn't support storing 0 sized types"
-		);
+		let capacity = if mem::size_of::<T>() == 0 {
+			usize::MAX
+		} else {
+			0
+		};
 		Vector {
 			data: None,
 			size: 0,
-			capacity: 0,
+			capacity,
 		}
 	}
 
 	///Creates a new vector with a preallocated buffer with space for `cap` elements.
 	pub fn with_capacity(cap: usize) -> Self {
 		let mut vec = Vector::new();
-		vec.reserve(cap);
+		if mem::size_of::<T>() != 0 {
+			vec.reserve(cap);
+		}
 		vec
 	}
 
@@ -212,6 +213,9 @@ impl<T> Vector<T> {
 	///
 	/// Panics if `additional` causes it to overflow a `usize`. Has O(n) complexity.
 	pub fn reserve_additional(&mut self, additional: usize) {
+		if mem::size_of::<T>() == 0 {
+			return;
+		}
 		let new_cap = self
 			.capacity
 			.checked_add(additional)
@@ -226,7 +230,7 @@ impl<T> Vector<T> {
 	///
 	/// Panics if the length of the vector is equal to usize::MAX. Has complexity O(1).
 	pub fn push(&mut self, elem: T) {
-		if self.data.is_none() {
+		if self.data.is_none() && mem::size_of::<T>() != 0 {
 			self.reserve(2);
 		} else if self.size == self.capacity {
 			if self.capacity == usize::MAX {
@@ -239,12 +243,11 @@ impl<T> Vector<T> {
 			);
 		}
 		assert!(self.size < self.capacity);
-		assert!(self.data.is_some());
+		assert!(self.data.is_some() || (mem::size_of::<T>() == 0));
 		//Safety: Length is checked. If the allocation was already full it is reallocated above.
 		unsafe {
-			self.data
+			self.as_ptr_mut()
 				.expect("Above assertion failed?")
-				.as_ptr()
 				.add(self.size)
 				.write(elem)
 		};
@@ -259,7 +262,7 @@ impl<T> Vector<T> {
 			return None;
 		}
 		//Safety: Index is already checked.
-		unsafe { self.data?.as_ptr().add(idx).as_ref() }
+		unsafe { self.as_ptr()?.add(idx).as_ref() }
 	}
 
 	///Gets a mutable reference to the element at index's position.
@@ -270,7 +273,7 @@ impl<T> Vector<T> {
 			return None;
 		}
 		//Safety: Index is already checked.
-		unsafe { self.data?.as_ptr().add(idx).as_mut() }
+		unsafe { self.as_ptr_mut()?.add(idx).as_mut() }
 	}
 
 	///Inserts element in vector at index, moving everything after it to the right.
@@ -282,9 +285,7 @@ impl<T> Vector<T> {
 			return self.push(elem);
 		}
 
-		if self.data.is_none() {
-			self.reserve(2);
-		} else if self.size == self.capacity {
+		if self.size == self.capacity {
 			if self.capacity == usize::MAX {
 				panic!("Overflow");
 			}
@@ -293,13 +294,14 @@ impl<T> Vector<T> {
 					.ceil()
 					.min(usize::MAX as f64) as usize,
 			);
+		} else if self.data.is_none() && mem::size_of::<T>() != 0 {
+			self.reserve(2);
 		}
 		assert!(self.size < self.capacity);
-		assert!(self.data.is_some());
+		assert!(self.data.is_some() || mem::size_of::<T>() == 0);
 		let data_ptr = self
-			.data
-			.expect("Vector's data pointer is null despite being just checked?")
-			.as_ptr();
+			.as_ptr_mut()
+			.expect("Vector's data pointer is null despite being just checked?");
 
 		for i in (idx..self.size).rev() {
 			//Safety: Copies element by element within the size of the vector's allocation.
@@ -319,8 +321,9 @@ impl<T> Vector<T> {
 		if self.size == 0 {
 			return None;
 		}
-		let data_ptr = self.data?.as_ptr();
+
 		self.size -= 1;
+		let data_ptr = self.as_ptr_mut()?;
 		//Safety: Existing pointer is trusted.
 		Some(unsafe { data_ptr.add(self.size).read() })
 	}
@@ -334,14 +337,15 @@ impl<T> Vector<T> {
 		if idx >= self.size {
 			panic!("Index was out of bounds!");
 		}
+
 		if idx == self.size {
 			return self.pop().expect("Vector is empty");
 		}
-		if self.size == 0 || self.data.is_none() {
+		if self.size == 0 || (self.data.is_none() && mem::size_of::<T>() != 0) {
 			panic!("Vector is empty");
 		}
 
-		let data_ptr = self.data.expect("Check above was incorrect?").as_ptr();
+		let data_ptr = self.as_ptr_mut().expect("Check above was incorrect?");
 
 		//Safety: Index is checked and pointer is trusted.
 		let ret = unsafe { data_ptr.add(idx).read() };
@@ -355,17 +359,29 @@ impl<T> Vector<T> {
 		ret
 	}
 
+	///Removes every element in the vector.
+	///
+	/// Has O(n) complexity.
+	pub fn clear(&mut self) {
+		while !self.is_empty() {
+			self.pop();
+		}
+	}
+
 	///Borrows the vector's allocation as an immutable slice.
 	///
 	/// Has complexity O(1).
 	pub fn as_slice(&self) -> &[T] {
-		if let Some(ptr) = self.data {
+		if self.data.is_some() || mem::size_of::<T>() == 0 {
 			//Safety: Or existing pointer and size are trusted as they can't (safely)
 			// be set from outside.
 			unsafe {
-				ptr::slice_from_raw_parts(ptr.as_ptr(), self.size)
-					.as_ref()
-					.expect("Vector's internal NonNull pointer was null?")
+				ptr::slice_from_raw_parts(
+					self.as_ptr().expect("Cannot get pointer to create slice"),
+					self.size,
+				)
+				.as_ref()
+				.expect("Vector's internal NonNull pointer was null?")
 			}
 		} else {
 			assert!(self.size == 0);
@@ -377,13 +393,17 @@ impl<T> Vector<T> {
 	///
 	/// Has complexity O(1).
 	pub fn as_slice_mut(&mut self) -> &mut [T] {
-		if let Some(ptr) = self.data {
+		if self.data.is_some() || mem::size_of::<T>() == 0 {
 			//Safety: Or existing pointer and size are trusted as they can't (safely)
 			// be set from outside.
 			unsafe {
-				ptr::slice_from_raw_parts_mut(ptr.as_ptr(), self.size)
-					.as_mut()
-					.expect("Vector's internal NonNull pointer was null?")
+				ptr::slice_from_raw_parts_mut(
+					self.as_ptr_mut()
+						.expect("Cannot get pointer to create slice"),
+					self.size,
+				)
+				.as_mut()
+				.expect("Vector's internal NonNull pointer was null?")
 			}
 		} else {
 			assert!(self.size == 0);
@@ -423,7 +443,23 @@ impl<T> Vector<T> {
 	///
 	/// Has complexity O(1).
 	pub fn as_ptr(&self) -> Option<*const T> {
-		self.data.map(|p| p.as_ptr() as *const _)
+		if mem::size_of::<T>() == 0 {
+			Some(self as *const Vector<T> as *const T)
+		} else {
+			self.data.map(|p| p.as_ptr() as *const _)
+		}
+	}
+
+	///Returns the pointer to the allocation of the Vector or
+	/// `None` if nothing has been allocated yet.
+	///
+	/// Has complexity O(1).
+	pub fn as_ptr_mut(&mut self) -> Option<*mut T> {
+		if mem::size_of::<T>() == 0 {
+			Some(self as *mut Vector<T> as *mut T)
+		} else {
+			self.data.map(|p| p.as_ptr())
+		}
 	}
 
 	///Removes any element which does not fulfill the requirement passed.
@@ -432,6 +468,17 @@ impl<T> Vector<T> {
 	///
 	/// Has complexity O(n)
 	pub fn retain(&mut self, f: fn(&T) -> bool) {
+		if mem::size_of::<T>() == 0 {
+			for i in (0..self.size).rev() {
+				//Even if there is no data and the function can't actually depend
+				// on the value of the element, the function might not be pure,
+				// hence looping instead of one check and do nothing/clear all.
+				if f(&self[i]) {
+					self.pop();
+				}
+			}
+			return;
+		}
 		if self.data.is_none() {
 			return;
 		}

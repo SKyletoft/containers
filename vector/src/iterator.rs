@@ -15,9 +15,14 @@ impl<T> Iterator for VectorIterator<T> {
 			self.index = self.index.wrapping_sub(1);
 			return None;
 		}
+		let ptr = if mem::size_of::<T>() == 0 {
+			self as *mut VectorIterator<T> as *mut T
+		} else {
+			self.data?.as_ptr()
+		};
 		//Safety: The data is only read from and the pointer is set to None when deallocated.
 		// The origin of the pointer is in the Vector and any safety issues occur there.
-		Some(unsafe { self.data?.as_ptr().add(self.index).read() })
+		Some(unsafe { ptr.add(self.index).read() })
 	}
 }
 
@@ -28,9 +33,14 @@ impl<T> DoubleEndedIterator for VectorIterator<T> {
 			self.index_back = self.index_back.wrapping_add(1);
 			return None;
 		}
+		let ptr = if mem::size_of::<T>() == 0 {
+			self as *mut VectorIterator<T> as *mut T
+		} else {
+			self.data?.as_ptr()
+		};
 		//Safety: The data is only read from and the pointer is set to None when deallocated.
 		// The origin of the pointer is in the Vector and any safety issues occur there.
-		Some(unsafe { self.data?.as_ptr().add(self.index_back).read() })
+		Some(unsafe { ptr.add(self.index_back).read() })
 	}
 }
 
